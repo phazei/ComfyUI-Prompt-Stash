@@ -36,7 +36,7 @@ class PromptStashSaver:
     CATEGORY = "utils"
 
     @classmethod
-    def IS_CHANGED(cls, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None):
+    def IS_CHANGED(cls, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None, prompt=None):
         m = hashlib.sha256()
         
         # Always include these parameters as they affect the output
@@ -50,7 +50,7 @@ class PromptStashSaver:
         
         return m.hexdigest()
         
-    def check_lazy_status(self, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None):
+    def check_lazy_status(self, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None, prompt=None):
         # Only need the text input if use_input_text is True
         needed = []
         if use_input_text:

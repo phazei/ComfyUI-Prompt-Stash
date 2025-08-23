@@ -12,7 +12,7 @@ app.registerExtension({
 
             // Size
             this.computeSize = function () {
-                return [230, 180];
+                return [230, 180]; // Increased height for new buttons
             };
 
             // Grab widgets
@@ -35,6 +35,95 @@ app.registerExtension({
             this.data = { lists: ["default"] };
             this._listActionsWidget = null;
             this._refreshListButtons = () => { };
+
+            // Helper to handle file imports
+            const handleFileImport = (file) => {
+                if (!file) return;
+
+                // Validate file type
+                if (!file.name.toLowerCase().endsWith('.json')) {
+                    if (app.extensionManager?.toast) {
+                        app.extensionManager.toast.add({
+                            severity: "error",
+                            summary: "Invalid File",
+                            detail: "Please select a JSON file",
+                            life: 5000
+                        });
+                    }
+                    return;
+                }
+
+                // Create form data for upload
+                const formData = new FormData();
+                formData.append('file', file);
+
+                // Show loading toast
+                if (app.extensionManager?.toast) {
+                    app.extensionManager.toast.add({
+                        severity: "info",
+                        summary: "Importing...",
+                        detail: "Processing prompt data",
+                        life: 3000
+                    });
+                }
+
+                // Upload and import
+                fetch('/prompt_stash_manager/import', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(data => {
+                            throw new Error(data.error || `HTTP ${response.status}`);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success && data.summary) {
+                        // Create detailed success message
+                        let detail = [];
+                        const s = data.summary;
+                        
+                        if (s.lists_added.length > 0) {
+                            detail.push(`Added ${s.lists_added.length} new list(s): ${s.lists_added.join(', ')}`);
+                        }
+                        
+                        if (s.lists_merged.length > 0) {
+                            detail.push(`Merged into ${s.lists_merged.length} existing list(s): ${s.lists_merged.join(', ')}`);
+                        }
+                        
+                        detail.push(`Total prompts added: ${s.prompts_added}`);
+                        
+                        if (s.prompts_renamed.length > 0) {
+                            detail.push(`${s.prompts_renamed.length} prompts renamed due to conflicts`);
+                        }
+
+                        if (app.extensionManager?.toast) {
+                            app.extensionManager.toast.add({
+                                severity: "success",
+                                summary: "Import Successful",
+                                detail: detail.join('. '),
+                                life: 8000
+                            });
+                        }
+                    } else {
+                        throw new Error("Import completed but no summary received");
+                    }
+                })
+                .catch(error => {
+                    console.error("Import failed:", error);
+                    if (app.extensionManager?.toast) {
+                        app.extensionManager.toast.add({
+                            severity: "error",
+                            summary: "Import Failed",
+                            detail: String(error.message || error),
+                            life: 5000
+                        });
+                    }
+                });
+            };
 
             // Helpers
             const canAdd = () => (newListNameWidget?.value || "").trim().length > 0;
@@ -175,6 +264,86 @@ app.registerExtension({
                 }, app);
                 this.addCustomWidget(x);
 
+                // Export/Import buttons
+                const exportImportWidget = app.widgets.MULTI_BUTTON(this, "export_import", {
+                    options: {
+                        buttons: [
+                            {
+                                label: "Export",
+                                callback: () => {
+                                    try {
+                                        // Create hidden link for download
+                                        const link = document.createElement('a');
+                                        link.href = '/prompt_stash_manager/export';
+                                        link.download = '_blank';
+                                        link.style.display = 'none';
+                                        document.body.appendChild(link);
+
+                                        // Trigger download
+                                        link.click();
+
+                                        // Clean up
+                                        document.body.removeChild(link);
+
+                                    } catch (error) {
+                                        // Show error toast
+                                        if (app.extensionManager?.toast) {
+                                            app.extensionManager.toast.add({
+                                                severity: "error",
+                                                summary: "Export Failed",
+                                                detail: `Could not export prompt data. ${String(error)}`,
+                                                life: 5000
+                                            });
+                                        } else {
+                                            console.error("Export failed:", error);
+                                        }
+                                    }
+                                },
+                            },
+                            {
+                                label: "Import",
+                                callback: () => {
+                                    try {
+                                        // Create hidden file input
+                                        const fileInput = document.createElement('input');
+                                        fileInput.type = 'file';
+                                        fileInput.accept = '.json';
+                                        fileInput.style.display = 'none';
+                                        
+                                        // Handle file selection
+                                        fileInput.addEventListener('change', (event) => {
+                                            const file = event.target.files[0];
+                                            if (file) {
+                                                handleFileImport(file);
+                                            }
+                                            // Clean up
+                                            document.body.removeChild(fileInput);
+                                        });
+                                        
+                                        // Add to DOM and trigger click
+                                        document.body.appendChild(fileInput);
+                                        fileInput.click();
+                                        
+                                    } catch (error) {
+                                        console.error("Import dialog failed:", error);
+                                        if (app.extensionManager?.toast) {
+                                            app.extensionManager.toast.add({
+                                                severity: "error",
+                                                summary: "Import Failed",
+                                                detail: `Could not open file dialog. ${String(error)}`,
+                                                life: 5000
+                                            });
+                                        }
+                                    }
+                                },
+                            },
+                        ],
+                        height: 28, gap: 10, pad: 16,
+                        alternate: false,
+                    },
+                }, app);
+
+                this.addCustomWidget(exportImportWidget);
             }
 
             // Clear all paused

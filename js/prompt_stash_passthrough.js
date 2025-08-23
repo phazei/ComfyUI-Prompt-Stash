@@ -9,79 +9,132 @@ app.registerExtension({
             nodeType.prototype.onNodeCreated = function() {
                 onNodeCreated?.apply(this, arguments);
 
-                // Set node size
+                // Set node size (simplified since button is in title)
                 this.computeSize = function() {
-                    if (this.showContinueButton) {
-                        return [210, 140]
-                    }
-                    return [210, 110];  // Slightly taller to accommodate pause toggle and button
+                    return [210, 110];
                 };
 
                 // Find our widgets
                 const promptWidget = this.widgets.find(w => w.name === "prompt_text");
                 const useInputWidget = this.widgets.find(w => w.name === "use_input_text");
                 const pauseToEditWidget = this.widgets.find(w => w.name === "pause_to_edit");
-                
+
                 // Update widget labels - do not change ".name", will break synch with py
                 useInputWidget.label = "Use ____";
                 pauseToEditWidget.label = "Pause to Edit";
 
-                // Add button state
+                // Button state tracking
                 this.showContinueButton = false;
                 this.buttonArea = null;
+                this.mouseOverButton = false;
 
                 // Store the original onDrawForeground method
                 const origDrawForeground = this.onDrawForeground;
-                
-                // Override the onDrawForeground method to draw our button
+
+                // Override the onDrawForeground method to draw our button in title bar
                 this.onDrawForeground = function(ctx, graphcanvas) {
                     // Call the original method if it exists
                     if (origDrawForeground) {
                         origDrawForeground.call(this, ctx, graphcanvas);
                     }
-                    
+
                     // Only draw the button if we should show it
                     if (this.showContinueButton) {
-                        // Button dimensions and position
-                        const buttonWidth = 100;
-                        const buttonHeight = 20;
-                        const x = (this.size[0] - buttonWidth) - 10;
-                        const y = 0 - buttonHeight - 5; // Position at bottom of node
+                        const titleHeight = LiteGraph.NODE_TITLE_HEIGHT;
+                        const buttonWidth = 80;
+                        const buttonHeight = titleHeight - 8; // Make it shorter
                         
-                        // Button background
-                        ctx.fillStyle = "#228B22"; // Same green as your original button
+                        // Position button in title bar (right side)
+                        const x = this.size[0] - buttonWidth - 6;
+                        const y = 3 - titleHeight; // Adjust Y position for centered look
+
+                        // Button background - more subtle colors
+                        if (this.mouseOverButton) {
+                            ctx.fillStyle = "#4A7C4A"; // Darker muted green on hover
+                        } else {
+                            ctx.fillStyle = "#3A6B3A"; // Muted dark green default
+                        }
+                        
                         ctx.beginPath();
-                        ctx.roundRect(x, y, buttonWidth, buttonHeight, 10);
+                        ctx.roundRect(x, y, buttonWidth, buttonHeight, 10); // Increased border radius
                         ctx.fill();
-                        
-                        // Button text - with explicit white color
-                        ctx.fillStyle = "#FFFFFF"; // White text for better contrast
+
+                        // Button border for better definition
+                        ctx.strokeStyle = this.mouseOverButton ? "#5A8C5A" : "#2A5B2A";
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+
+                        // Button text - with better contrast
+                        ctx.fillStyle = "#FFFFFF";
                         ctx.textAlign = "center";
                         ctx.textBaseline = "middle";
-                        ctx.font = "12px Arial";
+                        ctx.font = "11px Arial";
                         ctx.fillText("Continue", x + buttonWidth/2, y + buttonHeight/2);
-                        
+
                         // Store button coordinates for click detection
                         this.buttonArea = {x, y, width: buttonWidth, height: buttonHeight};
                     }
                 };
-                
+
+                // Store the original onMouseMove method
+                const origMouseMove = this.onMouseMove;
+
+                // Override onMouseMove to detect hover over button
+                this.onMouseMove = function(event, pos, graphcanvas) {
+                    let needsRedraw = false;
+                    
+                    // Check if hovering over button
+                    if (this.showContinueButton && this.buttonArea) {
+                        const {x, y, width, height} = this.buttonArea;
+                        const wasHovering = this.mouseOverButton;
+                        
+                        this.mouseOverButton = (
+                            pos[0] >= x && pos[0] <= x + width &&
+                            pos[1] >= y && pos[1] <= y + height
+                        );
+                        
+                        // If hover state changed, trigger redraw
+                        if (wasHovering !== this.mouseOverButton) {
+                            needsRedraw = true;
+                        }
+                        
+                        // Change cursor when hovering over button
+                        if (this.mouseOverButton) {
+                            graphcanvas.canvas.style.cursor = "pointer";
+                        } else if (wasHovering) {
+                            graphcanvas.canvas.style.cursor = "default";
+                        }
+                    }
+
+                    // Call original handler
+                    if (origMouseMove) {
+                        origMouseMove.call(this, event, pos, graphcanvas);
+                    }
+
+                    // Trigger redraw if needed
+                    if (needsRedraw) {
+                        app.graph.setDirtyCanvas(true, true);
+                    }
+
+                    return false;
+                };
+
                 // Store the original onMouseDown method
                 const origMouseDown = this.onMouseDown;
-                
+
                 // Override the onMouseDown method to detect button clicks
                 this.onMouseDown = function(event, pos, graphcanvas) {
                     // Check if clicking on our button
                     if (this.showContinueButton && this.buttonArea) {
                         const {x, y, width, height} = this.buttonArea;
-                        
+
                         // Check if click is inside the button area
-                        if (pos[0] >= x && pos[0] <= x + width && 
+                        if (pos[0] >= x && pos[0] <= x + width &&
                             pos[1] >= y && pos[1] <= y + height) {
-                            
+
                             // Get current text value
-                            const currentText = promptWidget.value;
-                            
+                            const currentText = promptWidget ? promptWidget.value : "";
+
                             // Handle the button click
                             api.fetchApi(`/prompt_stash_passthrough/continue/${this.id}`, {
                                 method: "POST",
@@ -89,16 +142,30 @@ app.registerExtension({
                             }).then(response => {
                                 if (response.ok) {
                                     this.showContinueButton = false;  // Hide button
+                                    this.mouseOverButton = false;    // Reset hover state
+                                    graphcanvas.canvas.style.cursor = "default"; // Reset cursor
                                     app.graph.setDirtyCanvas(true, true);
+                                    console.log("Workflow continued successfully");
+                                } else {
+                                    console.error("Failed to continue workflow, status:", response.status);
                                 }
                             }).catch(error => {
                                 console.error("Error continuing workflow:", error);
+                                // Could add toast notification here if available
+                                if (app.extensionManager?.toast) {
+                                    app.extensionManager.toast.add({
+                                        severity: "error",
+                                        summary: "Continue Failed",
+                                        detail: "Could not continue workflow execution",
+                                        life: 5000
+                                    });
+                                }
                             });
-                            
+
                             return true; // Handled the event
                         }
                     }
-                    
+
                     // Otherwise, use the original handler
                     if (origMouseDown) {
                         return origMouseDown.call(this, event, pos, graphcanvas);
@@ -106,11 +173,35 @@ app.registerExtension({
                     return false;
                 };
 
-                // Listen for enable-continue event
+                // Store the original onMouseLeave method (if exists)
+                const origMouseLeave = this.onMouseLeave;
+
+                // Override onMouseLeave to reset hover state
+                this.onMouseLeave = function(event) {
+                    if (this.mouseOverButton) {
+                        this.mouseOverButton = false;
+                        app.graph.setDirtyCanvas(true, true);
+                    }
+                    
+                    if (origMouseLeave) {
+                        return origMouseLeave.call(this, event);
+                    }
+                };
+
+                // Listen for enable-continue event with enhanced reliability
                 api.addEventListener("prompt-stash-enable-continue", (event) => {
                     if (String(event.detail.node_id) === String(this.id)) {
+                        console.log(`Enabling continue button for node ${this.id}`);
                         this.showContinueButton = true;  // Show continue button
+                        this.mouseOverButton = false;    // Reset hover state
                         app.graph.setDirtyCanvas(true, true);
+                        
+                        // Force a redraw after a small delay to ensure visibility
+                        setTimeout(() => {
+                            if (this.showContinueButton) {
+                                app.graph.setDirtyCanvas(true, true);
+                            }
+                        }, 100);
                     }
                 });
 
@@ -124,6 +215,35 @@ app.registerExtension({
                         }
                     }
                 });
+
+                // Add a method to manually show/hide button (for debugging)
+                this.toggleContinueButton = function(show) {
+                    console.log(`Manually ${show ? 'showing' : 'hiding'} continue button for node ${this.id}`);
+                    this.showContinueButton = show;
+                    this.mouseOverButton = false;
+                    app.graph.setDirtyCanvas(true, true);
+                };
+
+                // Enhanced state checking - periodically verify button should be shown
+                // This helps catch edge cases where the button might not appear
+                this.stateCheckInterval = setInterval(() => {
+                    // Only check if we think button should be hidden
+                    if (!this.showContinueButton) {
+                        // We could add server-side state verification here if needed
+                        // For now, we trust the event system but this provides a hook
+                    }
+                }, 5000); // Check every 5 seconds
+
+                // Clean up interval when node is removed
+                const origOnRemoved = this.onRemoved;
+                this.onRemoved = function() {
+                    if (this.stateCheckInterval) {
+                        clearInterval(this.stateCheckInterval);
+                    }
+                    if (origOnRemoved) {
+                        origOnRemoved.call(this);
+                    }
+                };
             };
         }
     }

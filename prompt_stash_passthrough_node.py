@@ -34,7 +34,7 @@ class PromptStashPassthrough:
     
 
     @classmethod
-    def IS_CHANGED(cls, use_input_text=False, text="", prompt_text="", pause_to_edit=False, unique_id=None, extra_pnginfo=None):
+    def IS_CHANGED(cls, use_input_text=False, text="", prompt_text="", pause_to_edit=False, unique_id=None, extra_pnginfo=None, prompt=None):
         m = hashlib.sha256()
         
         # Always include these parameters as they affect the output
@@ -49,7 +49,7 @@ class PromptStashPassthrough:
         
         return m.hexdigest()
 
-    def check_lazy_status(self, use_input_text=False, text="", prompt_text="", pause_to_edit=False, unique_id=None, extra_pnginfo=None):
+    def check_lazy_status(self, use_input_text=False, text="", prompt_text="", pause_to_edit=False, unique_id=None, extra_pnginfo=None, prompt=None):
         needed = []
         if use_input_text:
             needed.append("text")
