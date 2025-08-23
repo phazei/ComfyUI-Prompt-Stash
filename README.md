@@ -12,6 +12,7 @@ I created this because I couldn't find any nodes that would let me cache a promp
 
 ## Features ✨
 
+- NEW!⭐ **Import / Export**: Save and share your prompt file, import will merge and won't overwrite anything.
 - **Save Prompts**: Easily save prompts with a custom name for quick access.
 - **Multiple Lists**: Organize your prompts into different lists or categories.
 - **Pass-Through Functionality**: Connect to LLM nodes and capture their outputs directly into the plugin.
@@ -72,7 +73,17 @@ This node helps you manage your prompt lists and workflow state.
    - Click **Delete** to remove it. 🗑️
    - **Note**: You cannot delete the last remaining list.
 
-4. **Clear Paused State**:
+4.  **Export**:
+   - Save the file so you can back it up or share it.
+   - The file itself is always stored in your ComfyUI user directory.
+
+5.  **Import**:
+   - You can select any exported file to import.
+   - It will merge with any existing lists.
+   - Prompts with the same name will have `(#)` added to them so they don't overwrite.
+   - If you want to delete all your prompts, just delete the file in ComfyIU/user/prompt_stash/ and then refresh and it will be recreated.
+
+6. **Clear Paused State**:
    - If any workflows were closed while paused or the pause button vanishes, click **Clear All Paused** to reset all pause states.
    - This helps prevent workflows from getting stuck in a paused state.
 
