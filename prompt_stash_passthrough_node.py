@@ -2,6 +2,7 @@ import comfy
 from server import PromptServer
 from aiohttp import web
 import time
+import hashlib
 from comfy.model_management import InterruptProcessingException
 
 class PromptStashPassthrough:
@@ -22,6 +23,7 @@ class PromptStashPassthrough:
             "hidden": {
                 "unique_id": "UNIQUE_ID",
                 "extra_pnginfo": "EXTRA_PNGINFO",
+                "prompt": "PROMPT",
             }
         }
 
@@ -29,6 +31,23 @@ class PromptStashPassthrough:
     RETURN_NAMES = ("text",)
     FUNCTION = "process"
     CATEGORY = "utils"
+    
+
+    @classmethod
+    def IS_CHANGED(cls, use_input_text=False, text="", prompt_text="", pause_to_edit=False, unique_id=None, extra_pnginfo=None):
+        m = hashlib.sha256()
+        
+        # Always include these parameters as they affect the output
+        m.update(str(use_input_text).encode())
+        m.update(str(prompt_text).encode())
+        m.update(str(pause_to_edit).encode())
+        m.update(str(unique_id).encode())
+        
+        # Only include the text input if use_input_text is True
+        if use_input_text and text is not None:
+            m.update(str(text).encode())
+        
+        return m.hexdigest()
 
     def check_lazy_status(self, use_input_text=False, text="", prompt_text="", pause_to_edit=False, unique_id=None, extra_pnginfo=None):
         needed = []
@@ -36,7 +55,7 @@ class PromptStashPassthrough:
             needed.append("text")
         return needed
 
-    def process(self, use_input_text=False, text="", prompt_text="", pause_to_edit=False, unique_id=None, extra_pnginfo=None):
+    def process(self, use_input_text=False, text="", prompt_text="", pause_to_edit=False, unique_id=None, extra_pnginfo=None, prompt=None):
         # Update the prompt text based on use_input_text toggle
         output_text = prompt_text
         if use_input_text and text is not None:
@@ -93,7 +112,11 @@ class PromptStashPassthrough:
                     node["widgets_values"][prompt_text_index] = output_text  # Update the prompt text
                     node["widgets_values"][pause_to_edit_index] = False  # Force pause_to_edit to False
 
-
+            if prompt and unique_id is not None:
+                node_id_str = str(unique_id)
+                if node_id_str in prompt:
+                    prompt[node_id_str]['inputs']['use_input_text'] = False
+                    prompt[node_id_str]['inputs']['prompt_text'] = output_text
 
         return (output_text,)
 

@@ -1,6 +1,7 @@
 import os
 import json
 from server import PromptServer
+import hashlib
 from .data_utils import init_data_file
 
 class PromptStashSaver:
@@ -25,6 +26,7 @@ class PromptStashSaver:
             "hidden": {
                 "unique_id": "UNIQUE_ID",
                 "extra_pnginfo": "EXTRA_PNGINFO",
+                "prompt": "PROMPT",
             }
         }
 
@@ -33,6 +35,21 @@ class PromptStashSaver:
     FUNCTION = "process"
     CATEGORY = "utils"
 
+    @classmethod
+    def IS_CHANGED(cls, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None):
+        m = hashlib.sha256()
+        
+        # Always include these parameters as they affect the output
+        m.update(str(use_input_text).encode())
+        m.update(str(prompt_text).encode())
+        m.update(str(unique_id).encode())
+        
+        # Only include the text input if use_input_text is True
+        if use_input_text and text is not None:
+            m.update(str(text).encode())
+        
+        return m.hexdigest()
+        
     def check_lazy_status(self, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None):
         # Only need the text input if use_input_text is True
         needed = []
@@ -98,7 +115,7 @@ class PromptStashSaver:
             return success
         return False
 
-    def process(self, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None):
+    def process(self, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None, prompt=None):
         # Update the prompt text based on use_input_text toggle
         output_text = prompt_text
         if use_input_text and text is not None:
@@ -129,5 +146,12 @@ class PromptStashSaver:
                     # Update the values in metadata
                     node["widgets_values"][use_input_text_index] = False  # Force use_input_text to False in metadata
                     node["widgets_values"][prompt_text_index] = output_text  # Update the prompt text
-        
+
+
+            if prompt and unique_id is not None:
+                node_id_str = str(unique_id)
+                if node_id_str in prompt:
+                    prompt[node_id_str]['inputs']['use_input_text'] = False
+                    prompt[node_id_str]['inputs']['prompt_text'] = output_text
+
         return (output_text,)
