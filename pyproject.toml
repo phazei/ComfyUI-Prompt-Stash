@@ -1,7 +1,7 @@
 [project]
 name = "confyui-node-prompt-stash-saver"
 description = "Prompt Stash is a simple plugin for ComfyUI that lets you save your prompts and organize them into multiple lists. It also features a pass-through functionality, so you can hook it up to an LLM node (or any text outputting node) and capture its outputs directly."
-version = "1.3.1"
+version = "1.3.2"
 license = {file = "LICENSE"}
 
 [project.urls]

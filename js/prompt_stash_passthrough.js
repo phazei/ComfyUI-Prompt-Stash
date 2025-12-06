@@ -40,6 +40,9 @@ app.registerExtension({
 
                     // Only draw the button if we should show it
                     if (this.showContinueButton) {
+
+                        ctx.save(); // Save the context state before drawing button
+
                         const titleHeight = LiteGraph.NODE_TITLE_HEIGHT;
                         const buttonWidth = 80;
                         const buttonHeight = titleHeight - 8; // Make it shorter
@@ -73,6 +76,9 @@ app.registerExtension({
 
                         // Store button coordinates for click detection
                         this.buttonArea = {x, y, width: buttonWidth, height: buttonHeight};
+
+                        ctx.restore(); // Restore the context state after drawing button
+
                     }
                 };
 
@@ -188,20 +194,23 @@ app.registerExtension({
                     }
                 };
 
-                // Listen for enable-continue event with enhanced reliability
-                api.addEventListener("prompt-stash-enable-continue", (event) => {
+                // Listen for set-continue event with show/hide parameter
+                api.addEventListener("prompt-stash-set-continue", (event) => {
                     if (String(event.detail.node_id) === String(this.id)) {
-                        console.log(`Enabling continue button for node ${this.id}`);
-                        this.showContinueButton = true;  // Show continue button
+                        const shouldShow = event.detail.show !== false; // Default to true for backwards compatibility
+                        console.log(`${shouldShow ? 'Showing' : 'Hiding'} continue button for node ${this.id}`);
+                        this.showContinueButton = shouldShow;
                         this.mouseOverButton = false;    // Reset hover state
                         app.graph.setDirtyCanvas(true, true);
                         
-                        // Force a redraw after a small delay to ensure visibility
-                        setTimeout(() => {
-                            if (this.showContinueButton) {
-                                app.graph.setDirtyCanvas(true, true);
-                            }
-                        }, 100);
+                        // Force a redraw after a small delay to ensure visibility when showing
+                        if (shouldShow) {
+                            setTimeout(() => {
+                                if (this.showContinueButton) {
+                                    app.graph.setDirtyCanvas(true, true);
+                                }
+                            }, 100);
+                        }
                     }
                 });
 

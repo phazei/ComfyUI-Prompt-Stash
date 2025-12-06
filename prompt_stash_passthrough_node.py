@@ -70,12 +70,26 @@ class PromptStashPassthrough:
         if pause_to_edit:
             # Set status to paused and notify frontend
             self.status_by_id[unique_id] = "paused"
-            PromptServer.instance.send_sync("prompt-stash-enable-continue", {
-                "node_id": unique_id
+            PromptServer.instance.send_sync("prompt-stash-set-continue", {
+                "node_id": unique_id,
+                "show": True
             })
+
+            # Track iterations for periodic sync
+            iteration_count = 0
+            sync_interval = 20  # Send sync every 20 iterations (2 seconds at 0.1s sleep)
 
             # Wait in loop until continued
             while self.status_by_id.get(unique_id) == "paused":
+                iteration_count += 1
+                
+                # Resend sync signal every 20 iterations
+                if iteration_count % sync_interval == 0:
+                    PromptServer.instance.send_sync("prompt-stash-set-continue", {
+                        "node_id": unique_id,
+                        "show": True
+                    })
+                
                 time.sleep(0.1)
 
             # Get the edited text that was sent with the continue signal
@@ -134,6 +148,18 @@ async def continue_node(request):
 
 @PromptServer.instance.routes.post("/prompt_stash_passthrough/clear_all")
 async def clear_all_paused(request):
+    # Get all paused node IDs before clearing
+    paused_node_ids = list(PromptStashPassthrough.status_by_id.keys())
+    
+    # Clear the backend state
     PromptStashPassthrough.status_by_id.clear()
     PromptStashPassthrough.edited_text_by_id.clear()
+    
+    # Notify frontend to hide continue buttons for all paused nodes
+    for node_id in paused_node_ids:
+        PromptServer.instance.send_sync("prompt-stash-set-continue", {
+            "node_id": node_id,
+            "show": False
+        })
+    
     return web.json_response({"status": "ok"})
