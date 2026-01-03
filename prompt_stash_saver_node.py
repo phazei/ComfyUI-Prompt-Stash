@@ -20,8 +20,6 @@ class PromptStashSaver:
                 "text": ("STRING", {"default": "", "forceInput": True, "tooltip": "Optional input text", "lazy": True}),
                 "prompt_text": ("STRING", {"multiline": True, "default": "", "placeholder": "Enter prompt text"}),
                 "save_as_key": ("STRING", {"default": "", "placeholder": "Enter key to save as"}),
-                "load_saved": ("COMBO", {"default": "None"}), # Will be populated with actual prompts
-                "prompt_lists": ("COMBO", {"default": "default"}), # Will be populated with actual lists
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
@@ -36,7 +34,7 @@ class PromptStashSaver:
     CATEGORY = "utils"
 
     @classmethod
-    def IS_CHANGED(cls, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None, prompt=None):
+    def IS_CHANGED(cls, use_input_text=False, text="", prompt_text="", save_as_key="", unique_id=None, extra_pnginfo=None, prompt=None):
         m = hashlib.sha256()
         
         # Always include these parameters as they affect the output
@@ -50,7 +48,7 @@ class PromptStashSaver:
         
         return m.hexdigest()
         
-    def check_lazy_status(self, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None, prompt=None):
+    def check_lazy_status(self, use_input_text=False, text="", prompt_text="", save_as_key="", unique_id=None, extra_pnginfo=None, prompt=None):
         # Only need the text input if use_input_text is True
         needed = []
         if use_input_text:
@@ -115,7 +113,7 @@ class PromptStashSaver:
             return success
         return False
 
-    def process(self, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None, prompt=None):
+    def process(self, use_input_text=False, text="", prompt_text="", save_as_key="", unique_id=None, extra_pnginfo=None, prompt=None):
         # Update the prompt text based on use_input_text toggle
         output_text = prompt_text
         if use_input_text and text is not None:

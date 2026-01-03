@@ -16,7 +16,6 @@ class PromptStashManager:
             },
             "optional": {
                 "new_list_name": ("STRING", {"default": "", "placeholder": "Enter new list name"}),
-                "existing_lists": ("COMBO", {"default": "default"}),
             }
         }
 
@@ -80,5 +79,5 @@ class PromptStashManager:
             return success
         return False
 
-    def process(self, new_list_name="", existing_lists="default"):
+    def process(self, new_list_name=""):
         return ()

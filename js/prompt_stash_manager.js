@@ -17,19 +17,19 @@ app.registerExtension({
 
             // Grab widgets
             const newListNameWidget = this.widgets.find(w => w.name === "new_list_name");
-            const existingListsWidget = this.widgets.find(w => w.name === "existing_lists");
+
+            // Create combo widget in JavaScript
+            const existingListsWidget = this.addWidget(
+                "combo",
+                "existing_lists",
+                "default",
+                () => {},
+                { values: ["default"] }
+            );
 
             // Labels
             if (newListNameWidget) newListNameWidget.label = "New List Name";
             if (existingListsWidget) existingListsWidget.label = "Existing Lists";
-
-            // Ensure combo init
-            if (existingListsWidget) {
-                existingListsWidget.type = "combo";
-                existingListsWidget.options = existingListsWidget.options || {};
-                existingListsWidget.options.values = ["default"];
-                existingListsWidget.value = "default";
-            }
 
             // Node-local state/handles
             this.data = { lists: ["default"] };

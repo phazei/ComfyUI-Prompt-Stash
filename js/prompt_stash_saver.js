@@ -17,9 +17,24 @@ app.registerExtension({
                 // Find our widgets
                 const promptWidget = this.widgets.find(w => w.name === "prompt_text");
                 const saveKeyWidget = this.widgets.find(w => w.name === "save_as_key");
-                const loadSavedWidget = this.widgets.find(w => w.name === "load_saved");
                 const useInputWidget = this.widgets.find(w => w.name === "use_input_text");
-                const promptListsWidget = this.widgets.find(w => w.name === "prompt_lists");
+
+                // Create combo widgets in JavaScript
+                const loadSavedWidget = this.addWidget(
+                    "combo",
+                    "load_saved",
+                    "None",
+                    () => {},
+                    { values: ["None"] }
+                );
+
+                const promptListsWidget = this.addWidget(
+                    "combo",
+                    "prompt_lists",
+                    "default",
+                    () => {},
+                    { values: ["default"] }
+                );
 
                 // State tracking
                 this.isLoadingPrompt = false;
@@ -30,19 +45,6 @@ app.registerExtension({
                 loadSavedWidget.label = "Load Saved";
                 useInputWidget.label = "Use ____";
                 promptListsWidget.label = "List";
-
-                // Initialize the combo widgets
-                if (loadSavedWidget) {
-                    loadSavedWidget.type = "combo";
-                    loadSavedWidget.options = loadSavedWidget.options || {};
-                    loadSavedWidget.options.values = ["None"];
-                }
-
-                if (promptListsWidget) {
-                    promptListsWidget.type = "combo";
-                    promptListsWidget.options = promptListsWidget.options || {};
-                    promptListsWidget.options.values = ["default"];
-                }
 
                 // --- Helper guards for enabling/disabling actions in the two-button row
                 const canSave = () =>
