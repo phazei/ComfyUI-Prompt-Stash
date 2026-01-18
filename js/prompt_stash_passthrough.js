@@ -194,8 +194,14 @@ app.registerExtension({
                     }
                 };
 
-                // Listen for set-continue event with show/hide parameter
-                api.addEventListener("prompt-stash-set-continue", (event) => {
+                // Create bound event handler methods
+                this.handlePromptStashSetContinue = (event) => {
+                    // Skip if node is in invalid state
+                    if (this.id === -1) {
+                        this.onRemoved?.();
+                        return;
+                    }
+                    
                     if (String(event.detail.node_id) === String(this.id)) {
                         const shouldShow = event.detail.show !== false; // Default to true for backwards compatibility
                         console.log(`${shouldShow ? 'Showing' : 'Hiding'} continue button for node ${this.id}`);
@@ -212,10 +218,15 @@ app.registerExtension({
                             }, 100);
                         }
                     }
-                });
+                };
 
-                // Listen for text updates from input
-                api.addEventListener("prompt-stash-update-prompt", (event) => {
+                this.handlePromptStashUpdatePrompt = (event) => {
+                    // Skip if node is in invalid state
+                    if (this.id === -1) {
+                        this.onRemoved?.();
+                        return;
+                    }
+
                     if (String(event.detail.node_id) === String(this.id)) {
                         if (promptWidget) {
                             promptWidget.value = event.detail.prompt;
@@ -223,7 +234,13 @@ app.registerExtension({
                             app.graph.setDirtyCanvas(true, true);
                         }
                     }
-                });
+                };
+
+                // Listen for set-continue event with show/hide parameter
+                api.addEventListener("prompt-stash-set-continue", this.handlePromptStashSetContinue);
+
+                // Listen for text updates from input
+                api.addEventListener("prompt-stash-update-prompt", this.handlePromptStashUpdatePrompt);
 
                 // Add a method to manually show/hide button (for debugging)
                 this.toggleContinueButton = function(show) {
@@ -243,12 +260,14 @@ app.registerExtension({
                     }
                 }, 5000); // Check every 5 seconds
 
-                // Clean up interval when node is removed
+                // Clean up interval and event listeners when node is removed
                 const origOnRemoved = this.onRemoved;
                 this.onRemoved = function() {
                     if (this.stateCheckInterval) {
                         clearInterval(this.stateCheckInterval);
                     }
+                    api.removeEventListener("prompt-stash-set-continue", this.handlePromptStashSetContinue);
+                    api.removeEventListener("prompt-stash-update-prompt", this.handlePromptStashUpdatePrompt);
                     if (origOnRemoved) {
                         origOnRemoved.call(this);
                     }

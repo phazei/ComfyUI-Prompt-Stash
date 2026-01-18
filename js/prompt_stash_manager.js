@@ -351,8 +351,14 @@ app.registerExtension({
                 api.fetchApi("/prompt_stash_passthrough/clear_all", { method: "POST" });
             });
 
-            // Server push: update lists then refresh buttons
-            api.addEventListener("prompt-stash-update-all", (event) => {
+            // Create bound event handler method
+            this.handlePromptStashUpdateAll = (event) => {
+                // Skip if node is in invalid state
+                if (this.id === -1) {
+                    this.onRemoved?.();
+                    return;
+                }
+                
                 this.data = event.detail;
                 if (existingListsWidget && event.detail?.lists) {
                     // Update lists dropdown
@@ -369,7 +375,10 @@ app.registerExtension({
                     this.serialize_widgets = true;
                     app.graph.setDirtyCanvas(true, true);
                 }
-            });
+            };
+
+            // Server push: update lists then refresh buttons
+            api.addEventListener("prompt-stash-update-all", this.handlePromptStashUpdateAll);
 
             // Initial state fetch
             api.fetchApi("/prompt_stash_saver/init", {
@@ -395,6 +404,15 @@ app.registerExtension({
                         app.graph.setDirtyCanvas(true, true);
                     }
                 });
+
+            // Clean up event listeners when node is removed
+            const origOnRemoved = this.onRemoved;
+            this.onRemoved = function() {
+                api.removeEventListener("prompt-stash-update-all", this.handlePromptStashUpdateAll);
+                if (origOnRemoved) {
+                    origOnRemoved.call(this);
+                }
+            };
         };
     }
 });

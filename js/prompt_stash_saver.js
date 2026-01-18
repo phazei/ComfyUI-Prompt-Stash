@@ -260,8 +260,14 @@ app.registerExtension({
                     this._refreshSaveDeleteRow?.();
                 };
 
-                // Listen for updates from server
-                api.addEventListener("prompt-stash-update-all", (event) => {
+                // Create bound event handler methods
+                this.handlePromptStashUpdateAll = (event) => {
+                    // Skip if node is in invalid state
+                    if (this.id === -1) {
+                        this.onRemoved?.();
+                        return;
+                    }
+                    
                     this.data = event.detail;
                     if (promptListsWidget && event.detail.lists) {
                         // Update lists dropdown
@@ -277,10 +283,15 @@ app.registerExtension({
                         // Re-evaluate Save/Delete enabled states after server updates
                         this._refreshSaveDeleteRow?.();
                     }
-                });
+                };
 
-                // Listen for text updates from input
-                api.addEventListener("prompt-stash-update-prompt", (event) => {
+                this.handlePromptStashUpdatePrompt = (event) => {
+                    // Skip if node is in invalid state
+                    if (this.id === -1) {
+                        this.onRemoved?.();
+                        return;
+                    }
+                    
                     if (String(event.detail.node_id) === String(this.id)) {
                         if (promptWidget) {
                             promptWidget.value = event.detail.prompt;
@@ -291,7 +302,13 @@ app.registerExtension({
                             this._refreshSaveDeleteRow?.();
                         }
                     }
-                });
+                };
+
+                // Listen for updates from server
+                api.addEventListener("prompt-stash-update-all", this.handlePromptStashUpdateAll);
+
+                // Listen for text updates from input
+                api.addEventListener("prompt-stash-update-prompt", this.handlePromptStashUpdatePrompt);
 
                 // Request initial state
                 api.fetchApi('/prompt_stash_saver/init', {
@@ -300,6 +317,16 @@ app.registerExtension({
                         node_id: this.id
                     })
                 });
+
+                // Clean up event listeners when node is removed
+                const origOnRemoved = this.onRemoved;
+                this.onRemoved = function() {
+                    api.removeEventListener("prompt-stash-update-all", this.handlePromptStashUpdateAll);
+                    api.removeEventListener("prompt-stash-update-prompt", this.handlePromptStashUpdatePrompt);
+                    if (origOnRemoved) {
+                        origOnRemoved.call(this);
+                    }
+                };
             };
         }
     }
