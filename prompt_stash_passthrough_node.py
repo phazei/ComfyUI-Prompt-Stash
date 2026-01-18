@@ -4,6 +4,7 @@ from aiohttp import web
 import time
 import hashlib
 from comfy.model_management import InterruptProcessingException
+from .data_utils import update_node_in_workflow
 
 class PromptStashPassthrough:
     status_by_id = {}  # Track pause status for each node instance
@@ -46,7 +47,7 @@ class PromptStashPassthrough:
         # Only include the text input if use_input_text is True
         if use_input_text and text is not None:
             m.update(str(text).encode())
-        
+
         return m.hexdigest()
 
     def check_lazy_status(self, use_input_text=False, text="", prompt_text="", pause_to_edit=False, unique_id=None, extra_pnginfo=None, prompt=None):
@@ -111,20 +112,22 @@ class PromptStashPassthrough:
                 workflow = extra_pnginfo.get("workflow")
 
             if workflow:
-                node = next(
-                    (x for x in workflow["nodes"] if str(x["id"]) == str(unique_id)),
-                    None
-                )
-                if node and "widgets_values" in node:
-                    # Note: forceInput fields (like 'text') don't count in the widget_values indexing
-                    use_input_text_index = 0  # First widget in optional inputs
-                    prompt_text_index = 1     # Second widget (excluding forceInput)
-                    pause_to_edit_index = 2   # Third widget
+                
+                def apply_stash_changes(node):
+                    if "widgets_values" in node:
+                        # Note: forceInput fields (like 'text') don't count in the widget_values indexing
+                        use_input_text_index = 0  # First widget in optional inputs
+                        prompt_text_index = 1     # Second widget (excluding forceInput)
+                        pause_to_edit_index = 2   # Third widget
 
-                    # Update the values in metadata
-                    node["widgets_values"][use_input_text_index] = False  # Force use_input_text to False
-                    node["widgets_values"][prompt_text_index] = output_text  # Update the prompt text
-                    node["widgets_values"][pause_to_edit_index] = False  # Force pause_to_edit to False
+                        # Safety check, make sure there are at least 3 elements
+                        if len(node["widgets_values"]) > pause_to_edit_index:
+                            node["widgets_values"][use_input_text_index] = False  # Force use_input_text to False
+                            node["widgets_values"][prompt_text_index] = output_text  # Update the prompt text
+                            node["widgets_values"][pause_to_edit_index] = False  # Force pause_to_edit to False
+
+                update_node_in_workflow(workflow, unique_id, apply_stash_changes)
+
 
             if prompt and unique_id is not None:
                 node_id_str = str(unique_id)
