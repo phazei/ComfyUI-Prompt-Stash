@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
+import { nodeMatchesUniqueId } from "./utils.js";
 
 app.registerExtension({
     name: "phazei.PromptStashSaver",
@@ -292,7 +293,7 @@ app.registerExtension({
                         return;
                     }
                     
-                    if (String(event.detail.node_id) === String(this.id)) {
+                    if (nodeMatchesUniqueId(this, event.detail.node_id)) {
                         if (promptWidget) {
                             promptWidget.value = event.detail.prompt;
                             saveKeyWidget.value = "";

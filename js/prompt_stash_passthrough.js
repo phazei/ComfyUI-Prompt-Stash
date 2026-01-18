@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
+import { nodeMatchesUniqueId, getUniqueIdFromNode } from "./utils.js";
 
 app.registerExtension({
     name: "phazei.PromptStashPassthrough",
@@ -141,8 +142,11 @@ app.registerExtension({
                             // Get current text value
                             const currentText = promptWidget ? promptWidget.value : "";
 
+                            // Get the full unique ID path for subgraph support
+                            const uniqueId = getUniqueIdFromNode(this);
+                            
                             // Handle the button click
-                            api.fetchApi(`/prompt_stash_passthrough/continue/${this.id}`, {
+                            api.fetchApi(`/prompt_stash_passthrough/continue/${uniqueId}`, {
                                 method: "POST",
                                 body: JSON.stringify({ text: currentText })
                             }).then(response => {
@@ -202,7 +206,7 @@ app.registerExtension({
                         return;
                     }
                     
-                    if (String(event.detail.node_id) === String(this.id)) {
+                    if (nodeMatchesUniqueId(this, event.detail.node_id)) {
                         const shouldShow = event.detail.show !== false; // Default to true for backwards compatibility
                         console.log(`${shouldShow ? 'Showing' : 'Hiding'} continue button for node ${this.id}`);
                         this.showContinueButton = shouldShow;
@@ -227,7 +231,7 @@ app.registerExtension({
                         return;
                     }
 
-                    if (String(event.detail.node_id) === String(this.id)) {
+                    if (nodeMatchesUniqueId(this, event.detail.node_id)) {
                         if (promptWidget) {
                             promptWidget.value = event.detail.prompt;
                             this.serialize_widgets = true;
