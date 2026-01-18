@@ -41,7 +41,6 @@ class PromptStashPassthrough:
         # Always include these parameters as they affect the output
         m.update(str(use_input_text).encode())
         m.update(str(prompt_text).encode())
-        m.update(str(pause_to_edit).encode())
         m.update(str(unique_id).encode())
         
         # Only include the text input if use_input_text is True
