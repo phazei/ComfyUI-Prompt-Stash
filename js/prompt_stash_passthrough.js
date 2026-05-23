@@ -2,6 +2,76 @@ import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import { nodeMatchesUniqueId, getUniqueIdFromNode } from "./utils.js";
 
+// ── Vue Renderer Detection ───────────────────────────────────────────────
+
+/**
+ * Detect whether the Vue (Nodes 2.0) renderer is active.
+ * @returns {boolean}
+ */
+function isVueRenderer() {
+    return document.querySelector("[data-node-id]") !== null;
+}
+
+// ── DOM Continue Button (Nodes 2.0) ──────────────────────────────────────
+
+/**
+ * Show or hide a DOM-based Continue button on a node in the Vue renderer.
+ * The button is absolutely positioned in the title bar area, matching
+ * the canvas-drawn button's placement in LiteGraph mode.
+ *
+ * @param {Object} node - The LiteGraph node instance.
+ * @param {boolean} show - Whether to show or hide the button.
+ * @param {Function} onClick - Callback when the button is clicked.
+ */
+function updateDomContinueButton(node, show, onClick) {
+    const nodeEl = document.querySelector(`[data-node-id="${node.id}"]`);
+    if (!nodeEl) return;
+
+    const BUTTON_CLASS = "prompt-stash-continue-btn";
+    let btn = nodeEl.querySelector(`.${BUTTON_CLASS}`);
+
+    if (!show) {
+        if (btn) btn.remove();
+        return;
+    }
+
+    if (!btn) {
+        btn = document.createElement("button");
+        btn.className = BUTTON_CLASS;
+        btn.textContent = "Continue";
+        btn.style.cssText = [
+            "position: absolute",
+            "top: 4px",
+            "right: 6px",
+            "background: #3A6B3A",
+            "color: #FFFFFF",
+            "border: 1px solid #2A5B2A",
+            "border-radius: 10px",
+            "font-size: 11px",
+            "font-family: Arial, sans-serif",
+            "padding: 2px 12px",
+            "cursor: pointer",
+            "z-index: 20",
+            "line-height: 1.4",
+        ].join(";");
+
+        btn.addEventListener("mouseenter", () => {
+            btn.style.background = "#4A7C4A";
+            btn.style.borderColor = "#5A8C5A";
+        });
+        btn.addEventListener("mouseleave", () => {
+            btn.style.background = "#3A6B3A";
+            btn.style.borderColor = "#2A5B2A";
+        });
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            onClick();
+        });
+
+        nodeEl.appendChild(btn);
+    }
+}
+
 app.registerExtension({
     name: "phazei.PromptStashPassthrough",
     async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -28,6 +98,41 @@ app.registerExtension({
                 this.showContinueButton = false;
                 this.buttonArea = null;
                 this.mouseOverButton = false;
+
+                // ── Shared Continue Handler ──────────────────────────
+                // Used by both the canvas button click and the DOM button click.
+                const handleContinueClick = () => {
+                    const currentText = promptWidget ? promptWidget.value : "";
+                    const uniqueId = getUniqueIdFromNode(this);
+
+                    api.fetchApi(`/prompt_stash_passthrough/continue/${uniqueId}`, {
+                        method: "POST",
+                        body: JSON.stringify({ text: currentText })
+                    }).then(response => {
+                        if (response.ok) {
+                            this.showContinueButton = false;
+                            this.mouseOverButton = false;
+                            updateDomContinueButton(this, false);
+                            app.graph.setDirtyCanvas(true, true);
+                            console.log("Workflow continued successfully");
+                        } else {
+                            console.error("Failed to continue workflow, status:", response.status);
+                        }
+                    }).catch(error => {
+                        console.error("Error continuing workflow:", error);
+                        if (app.extensionManager?.toast) {
+                            app.extensionManager.toast.add({
+                                severity: "error",
+                                summary: "Continue Failed",
+                                detail: "Could not continue workflow execution",
+                                life: 5000
+                            });
+                        }
+                    });
+                };
+
+                // Store handleContinueClick on the node for DOM button access
+                this._handleContinueClick = handleContinueClick;
 
                 // Store the original onDrawForeground method
                 const origDrawForeground = this.onDrawForeground;
@@ -139,39 +244,8 @@ app.registerExtension({
                         if (pos[0] >= x && pos[0] <= x + width &&
                             pos[1] >= y && pos[1] <= y + height) {
 
-                            // Get current text value
-                            const currentText = promptWidget ? promptWidget.value : "";
-
-                            // Get the full unique ID path for subgraph support
-                            const uniqueId = getUniqueIdFromNode(this);
-                            
-                            // Handle the button click
-                            api.fetchApi(`/prompt_stash_passthrough/continue/${uniqueId}`, {
-                                method: "POST",
-                                body: JSON.stringify({ text: currentText })
-                            }).then(response => {
-                                if (response.ok) {
-                                    this.showContinueButton = false;  // Hide button
-                                    this.mouseOverButton = false;    // Reset hover state
-                                    graphcanvas.canvas.style.cursor = "default"; // Reset cursor
-                                    app.graph.setDirtyCanvas(true, true);
-                                    console.log("Workflow continued successfully");
-                                } else {
-                                    console.error("Failed to continue workflow, status:", response.status);
-                                }
-                            }).catch(error => {
-                                console.error("Error continuing workflow:", error);
-                                // Could add toast notification here if available
-                                if (app.extensionManager?.toast) {
-                                    app.extensionManager.toast.add({
-                                        severity: "error",
-                                        summary: "Continue Failed",
-                                        detail: "Could not continue workflow execution",
-                                        life: 5000
-                                    });
-                                }
-                            });
-
+                            graphcanvas.canvas.style.cursor = "default";
+                            handleContinueClick();
                             return true; // Handled the event
                         }
                     }
@@ -213,6 +287,14 @@ app.registerExtension({
                         this.mouseOverButton = false;    // Reset hover state
                         app.graph.setDirtyCanvas(true, true);
                         
+                        // Vue renderer: show/hide DOM button.
+                        // Defer slightly so the DOM element exists after Vue renders.
+                        if (isVueRenderer()) {
+                            setTimeout(() => {
+                                updateDomContinueButton(this, shouldShow, handleContinueClick);
+                            }, 50);
+                        }
+
                         // Force a redraw after a small delay to ensure visibility when showing
                         if (shouldShow) {
                             setTimeout(() => {
@@ -264,12 +346,13 @@ app.registerExtension({
                     }
                 }, 5000); // Check every 5 seconds
 
-                // Clean up interval and event listeners when node is removed
+                // Clean up interval, event listeners, and DOM button when node is removed
                 const origOnRemoved = this.onRemoved;
                 this.onRemoved = function() {
                     if (this.stateCheckInterval) {
                         clearInterval(this.stateCheckInterval);
                     }
+                    updateDomContinueButton(this, false);
                     api.removeEventListener("prompt-stash-set-continue", this.handlePromptStashSetContinue);
                     api.removeEventListener("prompt-stash-update-prompt", this.handlePromptStashUpdatePrompt);
                     if (origOnRemoved) {

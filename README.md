@@ -12,7 +12,8 @@ I created this because I couldn't find any nodes that would let me cache a promp
 
 ## Features ✨
 
-- NEW!⭐ **Import / Export**: Save and share your prompt file, import will merge and won't overwrite anything.
+- NEW!⭐ **Nodes 2.0 Compatible**: Works with both the legacy LiteGraph renderer and the new Vue-based Nodes 2.0 renderer.
+- **Import / Export**: Save and share your prompt file, import will merge and won't overwrite anything.
 - **Save Prompts**: Easily save prompts with a custom name for quick access.
 - **Multiple Lists**: Organize your prompts into different lists or categories.
 - **Pass-Through Functionality**: Connect to LLM nodes and capture their outputs directly into the plugin.

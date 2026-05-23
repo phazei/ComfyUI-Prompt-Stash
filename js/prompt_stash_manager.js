@@ -1,6 +1,26 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
+// ── Vue Reactivity Helpers ───────────────────────────────────────────────
+
+/**
+ * Force Vue (Nodes 2.0) to re-render combo widgets after their
+ * options.values have been mutated from plain JS.
+ *
+ * The mutation bypasses Vue's reactive proxy on the widget value store.
+ * To force a re-render we briefly change the target widget's value to a
+ * sentinel then back.  Two distinct values guarantees Vue's reactivity
+ * fires (same-value writes are skipped).  The intermediate value is
+ * never rendered because Vue batches synchronous updates.
+ *
+ * @param {Object} widget - The combo widget whose options changed.
+ */
+function triggerComboReactivity(widget) {
+    const cur = widget.value;
+    widget.value = cur + "\x00";   // sentinel: different string
+    widget.value = cur;            // back to original
+}
+
 app.registerExtension({
     name: "phazei.PromptStashManager",
     async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -370,6 +390,8 @@ app.registerExtension({
                         existingListsWidget.value = "default";
                     }
 
+                    triggerComboReactivity(existingListsWidget);
+
                     this._refreshListButtons?.();
 
                     this.serialize_widgets = true;
@@ -397,6 +419,8 @@ app.registerExtension({
                         if (!listNames.includes(existingListsWidget.value)) {
                             existingListsWidget.value = "default";
                         }
+
+                        triggerComboReactivity(existingListsWidget);
 
                         this._refreshListButtons?.();
 

@@ -40,6 +40,13 @@ app.registerExtension({
 
                 const state = { regions: [], pressed: -1, selected: selectedInit };
 
+                // Redraw helper: setDirtyCanvas for LiteGraph, triggerDraw for Vue (Nodes 2.0).
+                // WidgetLegacy.vue sets widget.triggerDraw when binding; it's undefined in LG mode.
+                const redraw = () => {
+                    node.setDirtyCanvas(true, true);
+                    widget?.triggerDraw?.();
+                };
+
                 const rr = (ctx, x, y, w, h, r = 6) => {
                     ctx.beginPath();
                     ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
@@ -50,11 +57,11 @@ app.registerExtension({
 
                 // expose a few controls
                 const api = {
-                    setDisabled(idx, val) { if (btns[idx]) { btns[idx].disabled = !!val; node.setDirtyCanvas(true, true); } },
+                    setDisabled(idx, val) { if (btns[idx]) { btns[idx].disabled = !!val; redraw(); } },
                     setSelected(idxOrArr, val) {
                         if (Array.isArray(idxOrArr)) { state.selected = new Set(idxOrArr); }
                         else { if (val) state.selected.add(idxOrArr); else state.selected.delete(idxOrArr); }
-                        node.setDirtyCanvas(true, true);
+                        redraw();
                         opts.onSelect?.(Array.from(state.selected));
                     },
                     getSelected() { return Array.from(state.selected); },
@@ -64,9 +71,9 @@ app.registerExtension({
                         btns.length = 0; for (const b of newBtns) btns.push(b);
                         // clamp selections
                         state.selected.forEach(i => { if (i < 0 || i >= btns.length) state.selected.delete(i); });
-                        node.setDirtyCanvas(true, true);
+                        redraw();
                     },
-                    update() { node.setDirtyCanvas(true, true); },
+                    update() { redraw(); },
                     buttons: btns, // convenience reference
                 };
 
@@ -158,14 +165,23 @@ app.registerExtension({
                         if (event.type === "pointerdown") {
                             if (hit !== -1 && !btns[hit]?.disabled) {
                                 state.pressed = hit;
-                                node.setDirtyCanvas(true);
+                                redraw();
                                 return true;
                             }
                         }
                         if (event.type === "pointerup") {
                             const i = state.pressed;
                             state.pressed = -1;
-                            if (i !== -1 && i === hit && !btns[i]?.disabled) {
+
+                            // In the Vue renderer (Nodes 2.0), WidgetLegacy wraps this widget
+                            // in a mini-canvas. The pointerup coordinates arrive in node-local
+                            // space (offset by title bar + widgets above), while state.regions
+                            // are in mini-canvas-local space. This makes the hit-test fail.
+                            // Fix: if we recorded a valid press on pointerdown (where coords
+                            // ARE correct), use that index directly instead of re-hit-testing.
+                            // Fall back to hit-test when available (works in LiteGraph mode).
+                            const target = (hit !== -1) ? hit : i;
+                            if (i !== -1 && target === i && !btns[i]?.disabled) {
 
                                 // confirm (optional) -> action -> selection
                                 const b = btns[i];
@@ -192,14 +208,14 @@ app.registerExtension({
                                     }
                                 }
 
-                                node.setDirtyCanvas(true);
+                                redraw();
                                 return true;
                             }
-                            node.setDirtyCanvas(true);
+                            redraw();
                         }
                         if (event.type === "pointerleave" || event.type === "pointercancel") {
                             state.pressed = -1;
-                            node.setDirtyCanvas(true);
+                            redraw();
                         }
                         return false;
                     },

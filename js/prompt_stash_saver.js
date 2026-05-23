@@ -2,6 +2,21 @@ import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import { nodeMatchesUniqueId } from "./utils.js";
 
+// ── Vue Reactivity Helpers ───────────────────────────────────────────────
+
+/**
+ * Force Vue (Nodes 2.0) to re-render combo widgets after their
+ * options.values have been mutated from plain JS.
+ * See prompt_stash_manager.js for full explanation.
+ *
+ * @param {Object} widget - The combo widget whose options changed.
+ */
+function triggerComboReactivity(widget) {
+    const cur = widget.value;
+    widget.value = cur + "\x00";
+    widget.value = cur;
+}
+
 app.registerExtension({
     name: "phazei.PromptStashSaver",
     async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -278,6 +293,9 @@ app.registerExtension({
                         const selectedList = promptListsWidget.value;
                         const prompts = event.detail.lists[selectedList] || {};
                         loadSavedWidget.options.values = ["None", ...Object.keys(prompts)];
+
+                        triggerComboReactivity(promptListsWidget);
+                        triggerComboReactivity(loadSavedWidget);
 
                         this.setDirtyCanvas(true, true);
 
