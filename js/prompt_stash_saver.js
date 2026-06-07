@@ -1,6 +1,12 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { nodeMatchesUniqueId } from "./utils.js";
+import {
+    nodeMatchesUniqueId,
+    installComboGetConfig,
+    refreshConnectedPrimitives,
+    syncValueToConnectedPrimitive,
+    walkGraph,
+} from "./utils.js";
 
 // ── Vue Reactivity Helpers ───────────────────────────────────────────────
 
@@ -35,22 +41,12 @@ app.registerExtension({
                 const saveKeyWidget = this.widgets.find(w => w.name === "save_as_key");
                 const useInputWidget = this.widgets.find(w => w.name === "use_input_text");
 
-                // Create combo widgets in JavaScript
-                const loadSavedWidget = this.addWidget(
-                    "combo",
-                    "load_saved",
-                    "None",
-                    () => {},
-                    { values: ["None"] }
-                );
-
-                const promptListsWidget = this.addWidget(
-                    "combo",
-                    "prompt_lists",
-                    "default",
-                    () => {},
-                    { values: ["default"] }
-                );
+                // The combo widgets are now declared in the Python node's
+                // INPUT_TYPES (load_saved, prompt_lists) so the frontend creates
+                // co-existing, Primitive-connectable input sockets. Find them
+                // here instead of creating them in JS.
+                const loadSavedWidget = this.widgets.find(w => w.name === "load_saved");
+                const promptListsWidget = this.widgets.find(w => w.name === "prompt_lists");
 
                 // State tracking
                 this.isLoadingPrompt = false;
@@ -61,6 +57,57 @@ app.registerExtension({
                 loadSavedWidget.label = "Load Saved";
                 useInputWidget.label = "Use ____";
                 promptListsWidget.label = "List";
+
+                // Last-known-good option lists, derived from the node's surviving
+                // `this.data` (set by the server broadcast). Used as the GET_CONFIG
+                // fallback so a connected Primitive keeps its value across the "R"
+                // refresh, which transiently resets options to the static stub.
+                this._comboFallback = {
+                    prompt_lists: () => Object.keys(this.data?.lists ?? {}),
+                    load_saved: () => {
+                        const lists = this.data?.lists;
+                        if (!lists) return [];
+                        const selected = promptListsWidget.value;
+                        const prompts = lists[selected] || {};
+                        return ["None", ...Object.keys(prompts)];
+                    },
+                };
+
+                // Install the GET_CONFIG override for a combo, with its fallback.
+                this._installComboInput = (widgetName) => {
+                    installComboGetConfig(this, widgetName, {
+                        getFallbackValues: this._comboFallback[widgetName],
+                        // Single-entry lists equal to these are the static stub.
+                        stubValues: ["None", "default", ""],
+                    });
+                };
+
+                // Expose the combos' live options to connected Primitive nodes,
+                // and notify them whenever the option lists change.
+                this._syncComboInput = (widgetName) => {
+                    this._installComboInput(widgetName);
+                    refreshConnectedPrimitives(this, widgetName);
+                };
+
+                // Rebuild both combos' options from the surviving `this.data`
+                // (used after the "R" refresh resets them to the static stub).
+                this._repopulateCombos = () => {
+                    const lists = this.data?.lists;
+                    if (!lists) return;
+
+                    promptListsWidget.options.values = Object.keys(lists);
+
+                    const selected = promptListsWidget.value;
+                    const prompts = lists[selected] || {};
+                    loadSavedWidget.options.values = ["None", ...Object.keys(prompts)];
+
+                    triggerComboReactivity(promptListsWidget);
+                    triggerComboReactivity(loadSavedWidget);
+
+                    this._syncComboInput("prompt_lists");
+                    this._syncComboInput("load_saved");
+                    this.setDirtyCanvas(true, true);
+                };
 
                 // --- Helper guards for enabling/disabling actions in the two-button row
                 const canSave = () =>
@@ -82,6 +129,7 @@ app.registerExtension({
                         loadSavedWidget.options.values = ["None", ...Object.keys(prompts)];
                         loadSavedWidget.value = "None";
                         this.serialize_widgets = true;
+                        this._syncComboInput?.("load_saved");
                         app.graph.setDirtyCanvas(true, true);
                         // Also refresh Save/Delete enabled state when list changes
                         this._refreshSaveDeleteRow?.();
@@ -98,6 +146,8 @@ app.registerExtension({
                         if (promptWidget.value !== savedPrompt) {
                             loadSavedWidget.value = "None";
                             this.serialize_widgets = true;
+                            // Reflect the reset onto a connected load_saved Primitive.
+                            syncValueToConnectedPrimitive(this, "load_saved");
                             app.graph.setDirtyCanvas(true, true);
                         }
                     }
@@ -113,6 +163,8 @@ app.registerExtension({
                         if (saveKeyWidget.value !== savedPromptKey) {
                             loadSavedWidget.value = "None";
                             this.serialize_widgets = true;
+                            // Reflect the reset onto a connected load_saved Primitive.
+                            syncValueToConnectedPrimitive(this, "load_saved");
                             app.graph.setDirtyCanvas(true, true);
                         }
                     }
@@ -148,6 +200,16 @@ app.registerExtension({
 
                                         // Immediately set the value without waiting for server
                                         loadSavedWidget.value = keyToSave;
+
+                                        // Ensure the just-saved key is a selectable
+                                        // option now (the server broadcast that adds
+                                        // it arrives later), then reflect both the
+                                        // options and value onto a connected Primitive.
+                                        if (!loadSavedWidget.options.values.includes(keyToSave)) {
+                                            loadSavedWidget.options.values = [...loadSavedWidget.options.values, keyToSave];
+                                        }
+                                        this._syncComboInput?.("load_saved");
+                                        syncValueToConnectedPrimitive(this, "load_saved");
 
                                         this.serialize_widgets = true;
                                         app.graph.setDirtyCanvas(true, true);
@@ -192,6 +254,11 @@ app.registerExtension({
                                                 }
                                             }
 
+                                            // Drop the deleted item from the options
+                                            // now (the server broadcast that removes it
+                                            // arrives later) so a connected Primitive's
+                                            // dropdown matches.
+                                            loadSavedWidget.options.values = availablePrompts;
                                             loadSavedWidget.value = newSelection;
 
                                             if (newSelection === "None") {
@@ -204,6 +271,16 @@ app.registerExtension({
                                                 // Load the newly selected prompt
                                                 this.loadPrompt(newSelection, promptWidget, saveKeyWidget);
                                             }
+
+                                            // Reflect the updated selection onto a
+                                            // connected load_saved Primitive. Set the
+                                            // value FIRST: _syncComboInput runs
+                                            // refreshComboInNode, which clamps the
+                                            // Primitive to options[0] ("None") if its
+                                            // current value (still the just-deleted
+                                            // item) isn't in the new options.
+                                            syncValueToConnectedPrimitive(this, "load_saved");
+                                            this._syncComboInput?.("load_saved");
 
                                             this.serialize_widgets = true;
                                             app.graph.setDirtyCanvas(true, true);
@@ -297,6 +374,9 @@ app.registerExtension({
                         triggerComboReactivity(promptListsWidget);
                         triggerComboReactivity(loadSavedWidget);
 
+                        this._syncComboInput?.("prompt_lists");
+                        this._syncComboInput?.("load_saved");
+
                         this.setDirtyCanvas(true, true);
 
                         // Re-evaluate Save/Delete enabled states after server updates
@@ -337,6 +417,13 @@ app.registerExtension({
                     })
                 });
 
+                // Install the GET_CONFIG override on both combo inputs once the
+                // framework has wired their input slots (deferred a frame).
+                requestAnimationFrame(() => {
+                    this._installComboInput("load_saved");
+                    this._installComboInput("prompt_lists");
+                });
+
                 // Clean up event listeners when node is removed
                 const origOnRemoved = this.onRemoved;
                 this.onRemoved = function() {
@@ -348,5 +435,20 @@ app.registerExtension({
                 };
             };
         }
-    }
+    },
+
+    /**
+     * Re-populate the combo options after a global Refresh ("R" key /
+     * refresh button). reloadNodeDefs resets every combo's options.values to
+     * the static Python stub (["None"] / ["default"]), which would otherwise
+     * drop the live lists and reset connected Primitives. We rebuild them from
+     * each node's surviving `this.data`.
+     */
+    refreshComboInNodes() {
+        walkGraph(app.graph, (node) => {
+            if (node.comfyClass === "PromptStashSaver") {
+                node._repopulateCombos?.();
+            }
+        });
+    },
 });
