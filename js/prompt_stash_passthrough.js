@@ -1,6 +1,80 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { nodeMatchesUniqueId, getUniqueIdFromNode } from "./utils.js";
+import { nodeMatchesUniqueId, getUniqueIdFromNode, walkGraph } from "./utils.js";
+
+// ── Cache-Invalidation Workaround ────────────────────────────────────────
+//
+// ComfyUI's output cache key for a node folds in the FULL signature of every
+// upstream node it is *linked* to -- including inputs declared "lazy": True --
+// because the signature is computed from the raw prompt graph before execution
+// (comfy_execution/caching.py: get_ordered_ancestry_internal). check_lazy_status
+// runs much later, so a lazy input we never actually use still invalidates this
+// node (and everything downstream) whenever its upstream value changes. See
+// https://github.com/Comfy-Org/ComfyUI/issues/11744
+//
+// When "use_input_text" is false this node ignores its "text" input entirely
+// (check_lazy_status returns []), so the link is dead weight in the cache key.
+// We strip that link from the API prompt at queue time -- the same moment and
+// shape that core itself uses to drop orphaned links in graphToPrompt -- so the
+// changing upstream value no longer pollutes our signature. The link is left
+// untouched when "use_input_text" is true, preserving correct invalidation.
+let _graphToPromptPatched = false;
+
+/**
+ * Wrap app.graphToPrompt once so that, for every Prompt Stash Passthrough node
+ * whose use_input_text widget is false, the "text" input link is removed from
+ * the generated API prompt. graphToPrompt runs synchronously when the user
+ * queues a run, snapshotting the currently open graph; already-queued prompts
+ * are unaffected by later workflow switches.
+ */
+function patchGraphToPromptOnce() {
+    if (_graphToPromptPatched) return;
+    if (typeof app.graphToPrompt !== "function") return;
+    _graphToPromptPatched = true;
+
+    const origGraphToPrompt = app.graphToPrompt.bind(app);
+
+    app.graphToPrompt = async function(...args) {
+        const result = await origGraphToPrompt(...args);
+        try {
+            stripUnusedTextLinks(result?.output);
+        } catch (error) {
+            console.error("PromptStashPassthrough: failed to strip unused text link", error);
+        }
+        return result;
+    };
+}
+
+/**
+ * For each Prompt Stash Passthrough node in the open graph (including those
+ * nested in subgraphs) with use_input_text === false, delete the "text" entry
+ * from that node's inputs in the API prompt output dict.
+ *
+ * @param {Object|undefined} output - The API prompt map (node_id -> {inputs,...}).
+ */
+function stripUnusedTextLinks(output) {
+    if (!output || typeof output !== "object") return;
+    const rootGraph = app.graph;
+    if (!rootGraph) return;
+
+    walkGraph(rootGraph, (node) => {
+        const nodeClass = node?.comfyClass ?? node?.constructor?.comfyClass;
+        if (nodeClass !== "PromptStashPassthrough") return;
+
+        const useInputWidget = node.widgets?.find((w) => w.name === "use_input_text");
+        if (!useInputWidget || useInputWidget.value === true) return;
+
+        const promptId = getUniqueIdFromNode(node);
+        const entry = output[promptId];
+        const link = entry?.inputs?.text;
+
+        // Only remove an actual upstream connection ([node_id, slot]); leave any
+        // literal/widget value untouched.
+        if (Array.isArray(link) && link.length === 2) {
+            delete entry.inputs.text;
+        }
+    });
+}
 
 // ── Vue Renderer Detection ───────────────────────────────────────────────
 
@@ -76,6 +150,9 @@ app.registerExtension({
     name: "phazei.PromptStashPassthrough",
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name === "PromptStashPassthrough") {
+            // Install the queue-time cache-invalidation workaround once.
+            patchGraphToPromptOnce();
+
             const onNodeCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function() {
                 onNodeCreated?.apply(this, arguments);
