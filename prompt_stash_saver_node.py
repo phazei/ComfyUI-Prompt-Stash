@@ -35,8 +35,13 @@ class PromptStashSaver:
             }
         }
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("text",)
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("text", "meta")
+    OUTPUT_TOOLTIPS = (
+        "The prompt text",
+        "JSON string with info about the prompt: prompt_name, list_name, source, etc. "
+        "Feed it to a JSON-aware node to extract fields (e.g. prompt_name for a filename prefix).",
+    )
     FUNCTION = "process"
     CATEGORY = "utils"
 
@@ -59,6 +64,11 @@ class PromptStashSaver:
         m.update(str(use_input_text).encode())
         m.update(str(prompt_text).encode())
         m.update(str(unique_id).encode())
+
+        # These feed the "meta" output (prompt_name / list_name)
+        m.update(str(save_as_key).encode())
+        m.update(str(load_saved).encode())
+        m.update(str(prompt_lists).encode())
         
         # Only include the text input if use_input_text is True
         if use_input_text and text is not None:
@@ -131,7 +141,46 @@ class PromptStashSaver:
             return success
         return False
 
+    @staticmethod
+    def build_meta(use_input_text, text, save_as_key, load_saved, prompt_lists):
+        """Build the JSON string for the "meta" output.
+
+        prompt_name precedence:
+          1. "llm input"  - text came in fresh via the `text` input this run
+                            (any save_as_key / load_saved on the node is stale)
+          2. save_as_key  - the user typed/loaded a name into "Save Name"
+          3. load_saved   - a saved prompt is selected but Save Name is empty
+          4. ""           - manual, unnamed text
+        """
+        key = (save_as_key or "").strip()
+        loaded = load_saved if load_saved and load_saved != "None" else ""
+
+        if use_input_text and text is not None:
+            prompt_name = "llm input"
+            source = "input"
+        elif key:
+            prompt_name = key
+            source = "saved" if loaded else "manual"
+        elif loaded:
+            prompt_name = loaded
+            source = "saved"
+        else:
+            prompt_name = ""
+            source = "manual"
+
+        meta = {
+            "prompt_name": prompt_name,
+            "list_name": prompt_lists,
+            "source": source,           # "input" | "saved" | "manual"
+            "save_as_key": key,
+            "load_saved": loaded,
+            "use_input_text": bool(use_input_text),
+        }
+        return json.dumps(meta, ensure_ascii=False, indent=2)
+
     def process(self, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None, prompt=None):
+        meta = self.build_meta(use_input_text, text, save_as_key, load_saved, prompt_lists)
+
         # Update the prompt text based on use_input_text toggle
         output_text = prompt_text
         if use_input_text and text is not None:
@@ -170,4 +219,4 @@ class PromptStashSaver:
                     prompt[node_id_str]['inputs']['use_input_text'] = False
                     prompt[node_id_str]['inputs']['prompt_text'] = output_text
 
-        return (output_text,)
+        return (output_text, meta)

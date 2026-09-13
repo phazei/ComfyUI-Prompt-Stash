@@ -6,6 +6,7 @@ import {
     installComboGetConfig,
     isUnassignedNode,
     refreshConnectedPrimitives,
+    setDefaultLabel,
     syncValueToConnectedPrimitive,
     walkGraph,
 } from "./utils.js";
@@ -131,11 +132,12 @@ app.registerExtension({
                 this.isLoadingPrompt = false;
                 this.currentSaveOperation = null;
 
-                // Update widget names/labels - do not change ".name", will break synch with py
-                saveKeyWidget.label = "Save Name";
-                loadSavedWidget.label = "Load Saved";
-                useInputWidget.label = "Use ____";
-                promptListsWidget.label = "List";
+                // Default widget labels (respecting any user rename) - do not
+                // change ".name", will break synch with py
+                setDefaultLabel(this, saveKeyWidget, "Save Name");
+                setDefaultLabel(this, loadSavedWidget, "Load Saved");
+                setDefaultLabel(this, useInputWidget, "Use ____");
+                setDefaultLabel(this, promptListsWidget, "List");
 
                 // Last-known-good option lists, derived from the node's surviving
                 // `this.data` (set by the server broadcast). Used as the GET_CONFIG

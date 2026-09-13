@@ -79,5 +79,27 @@ class PromptStashManager:
             return success
         return False
 
+    def sort_list(self, list_name):
+        """Sort the prompts in a list alphabetically (case-insensitive) by name.
+
+        Rewrites the list's key order in the data file so the new order is
+        persistent and reflected in exports and every saver node's dropdown.
+        """
+        if list_name not in self.data["lists"]:
+            return False
+
+        prompts = self.data["lists"][list_name]
+        self.data["lists"][list_name] = dict(
+            sorted(prompts.items(), key=lambda kv: kv[0].casefold())
+        )
+        success = self.save_data()
+
+        if success:
+            # Notify all nodes of the update
+            PromptServer.instance.send_sync("prompt-stash-update-all", {
+                "lists": self.data["lists"]
+            })
+        return success
+
     def process(self, new_list_name=""):
         return ()

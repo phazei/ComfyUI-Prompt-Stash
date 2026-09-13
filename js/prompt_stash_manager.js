@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { isUnassignedNode } from "./utils.js";
+import { isUnassignedNode, setDefaultLabel } from "./utils.js";
 
 // ── Vue Reactivity Helpers ───────────────────────────────────────────────
 
@@ -48,9 +48,9 @@ app.registerExtension({
                 { values: ["default"] }
             );
 
-            // Labels
-            if (newListNameWidget) newListNameWidget.label = "New List Name";
-            if (existingListsWidget) existingListsWidget.label = "Existing Lists";
+            // Default labels (respecting any user rename)
+            setDefaultLabel(this, newListNameWidget, "New List Name");
+            setDefaultLabel(this, existingListsWidget, "Existing Lists");
 
             // Node-local state/handles
             this.data = { lists: ["default"] };
@@ -153,12 +153,41 @@ app.registerExtension({
                 const sel = existingListsWidget?.value;
                 return lists.length > 1 && !!sel; // change to `&& sel !== "default"` if you want to lock default
             };
+            // Sorting a 0/1-item list is a harmless no-op; keep the button
+            // enabled whenever a list is selected to avoid confusion.
+            const canSort = () => !!existingListsWidget?.value;
 
-            // Two-button row (Add / Delete) via MULTI_BUTTON
+            // Three-button row (Sort / Add / Delete) via MULTI_BUTTON
             if (typeof app.widgets?.MULTI_BUTTON === "function") {
                 const w = app.widgets.MULTI_BUTTON(this, "list_actions", {
                     options: {
                         buttons: [
+                            {
+                                label: "Sort A-Z",
+                                callback: () => {
+                                    const selectedList = existingListsWidget?.value;
+                                    if (!canSort()) return;
+
+                                    api.fetchApi("/prompt_stash_saver/sort_list", {
+                                        method: "POST",
+                                        body: JSON.stringify({ list_name: selectedList }),
+                                    })
+                                        .then(r => r.json())
+                                        .then(data => {
+                                            if (!data?.success) return;
+                                            // Saver nodes pick up the new order from the
+                                            // server's prompt-stash-update-all broadcast.
+                                            if (app.extensionManager?.toast) {
+                                                app.extensionManager.toast.add({
+                                                    severity: "success",
+                                                    summary: "List Sorted",
+                                                    detail: `"${selectedList}" sorted alphabetically`,
+                                                    life: 3000
+                                                });
+                                            }
+                                        });
+                                },
+                            },
                             {
                                 label: "Add",
                                 callback: () => {
@@ -226,8 +255,9 @@ app.registerExtension({
                 // Hoisted refresher (safe to call anytime)
                 this._refreshListButtons = () => {
                     if (!this._listActionsWidget) return;
-                    this._listActionsWidget.setDisabled(0, !canAdd());
-                    this._listActionsWidget.setDisabled(1, !canDelete());
+                    this._listActionsWidget.setDisabled(0, !canSort());
+                    this._listActionsWidget.setDisabled(1, !canAdd());
+                    this._listActionsWidget.setDisabled(2, !canDelete());
                     this._listActionsWidget.update();
                 };
 

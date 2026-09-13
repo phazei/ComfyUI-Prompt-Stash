@@ -56,6 +56,13 @@ async def delete_list(request):
     success = node.delete_list(json_data["list_name"])
     return web.json_response({"success": success})
 
+@PromptServer.instance.routes.post("/prompt_stash_saver/sort_list")
+async def sort_list(request):
+    json_data = await request.json()
+    node = PromptStashManager()
+    success = node.sort_list(json_data["list_name"])
+    return web.json_response({"success": success})
+
 @PromptServer.instance.routes.get("/prompt_stash_manager/export")
 async def export_data(request):
     """Export prompt stash data as downloadable file."""

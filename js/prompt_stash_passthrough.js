@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { nodeMatchesUniqueId, getUniqueIdFromNode, isUnassignedNode, walkGraph } from "./utils.js";
+import { nodeMatchesUniqueId, getUniqueIdFromNode, isUnassignedNode, setDefaultLabel, walkGraph } from "./utils.js";
 
 // ── Cache-Invalidation Workaround ────────────────────────────────────────
 //
@@ -167,9 +167,10 @@ app.registerExtension({
                 const useInputWidget = this.widgets.find(w => w.name === "use_input_text");
                 const pauseToEditWidget = this.widgets.find(w => w.name === "pause_to_edit");
 
-                // Update widget labels - do not change ".name", will break synch with py
-                useInputWidget.label = "Use ____";
-                pauseToEditWidget.label = "Pause to Edit";
+                // Default widget labels (respecting any user rename) - do not
+                // change ".name", will break synch with py
+                setDefaultLabel(this, useInputWidget, "Use ____");
+                setDefaultLabel(this, pauseToEditWidget, "Pause to Edit");
 
                 // Button state tracking
                 this.showContinueButton = false;

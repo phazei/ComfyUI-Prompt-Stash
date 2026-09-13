@@ -223,6 +223,29 @@ export function walkGraph(graph, callback) {
 const UNASSIGNED_NODE_ID = "-1";
 
 /**
+ * Set a widget's display label, but only if the user hasn't already given
+ * it a custom one. Only `.label` is touched -- never `.name`, which must stay
+ * in sync with the Python input key.
+ *
+ * A user rename (renameWidget) sets `input.label` on the widget's backing
+ * input slot, which IS serialized; the frontend copies it back onto
+ * `widget.label` in LGraphNode.configure(). configure() normally runs after
+ * onNodeCreated, but guard anyway so we never stomp a custom label if the
+ * order differs (paste/clone, Nodes 2.0). See issue #13.
+ *
+ * @param {LGraphNode} node - The node owning the widget.
+ * @param {Object|undefined} widget - The widget to label.
+ * @param {string} label - Default label to apply.
+ */
+export function setDefaultLabel(node, widget, label) {
+    if (!widget) return;
+    const input = node?.inputs?.find?.((i) => i.widget?.name === widget.name);
+    // A truthy label that differs from the raw python key is a custom one.
+    const custom = input?.label || (widget.label && widget.label !== widget.name ? widget.label : "");
+    widget.label = custom || label;
+}
+
+/**
  * Whether a node is detached / not yet assigned a real id by a graph.
  *
  * @param {LGraphNode} node - The node to check.

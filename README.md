@@ -44,6 +44,20 @@ This node lets you save, load, and manage your prompts.
 
 6. **Delete a Prompt**: Select a prompt and click **Delete Selected** to remove it. 🗑️
 
+7. **Outputs**:
+   - **text**: The prompt text.
+   - **meta**: A JSON string describing the prompt, for use with JSON-aware nodes (e.g. to put the prompt name in a filename):
+     ```json
+     {
+       "prompt_name": "Bob",     // save name, else loaded name, else "llm input" when fed from the input
+       "list_name": "characters",
+       "source": "saved",        // "saved" | "manual" | "input"
+       "save_as_key": "Bob",
+       "load_saved": "Bob",
+       "use_input_text": false
+     }
+     ```
+
 ### Prompt Stash Passthrough Node
 
 This lightweight node allows you to modify text as it passes through your workflow.
@@ -74,17 +88,22 @@ This node helps you manage your prompt lists and workflow state.
    - Click **Delete** to remove it. 🗑️
    - **Note**: You cannot delete the last remaining list.
 
-4.  **Export**:
+4. **Sort a List**:
+   - Select a list from the **Existing Lists** dropdown.
+   - Click **Sort A-Z** to reorder its prompts alphabetically (case-insensitive).
+   - The new order is saved to the file, so it applies to every Saver node's **Load Saved** dropdown and to exports.
+
+5.  **Export**:
    - Save the file so you can back it up or share it.
    - The file itself is always stored in your ComfyUI user directory.
 
-5.  **Import**:
+6.  **Import**:
    - You can select any exported file to import.
    - It will merge with any existing lists.
    - Prompts with the same name will have `(#)` added to them so they don't overwrite.
    - If you want to delete all your prompts, just delete the file in ComfyIU/user/prompt_stash/ and then refresh and it will be recreated.
 
-6. **Clear Paused State**:
+7. **Clear Paused State**:
    - If any workflows were closed while paused or the pause button vanishes, click **Clear All Paused** to reset all pause states.
    - This helps prevent workflows from getting stuck in a paused state.
 
