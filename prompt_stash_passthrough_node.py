@@ -4,7 +4,7 @@ from aiohttp import web
 import time
 import hashlib
 from comfy.model_management import InterruptProcessingException
-from .data_utils import update_node_in_workflow
+from .data_utils import update_node_in_workflow, prompt_has_input
 
 class PromptStashPassthrough:
     status_by_id = {}  # Track pause status for each node instance
@@ -52,6 +52,11 @@ class PromptStashPassthrough:
     def check_lazy_status(self, use_input_text=False, text="", prompt_text="", pause_to_edit=False, unique_id=None, extra_pnginfo=None, prompt=None):
         needed = []
         if use_input_text:
+            if not prompt_has_input(prompt, unique_id, "text"):
+                raise ValueError(
+                    f"Prompt Stash Passthrough (node {unique_id}): 'use_input_text' is on, but nothing "
+                    "is connected to the 'text' input. Connect a text input or switch to 'Use Prompt'."
+                )
             needed.append("text")
         return needed
 

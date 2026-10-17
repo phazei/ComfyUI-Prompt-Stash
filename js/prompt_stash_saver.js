@@ -2,7 +2,6 @@ import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import {
     nodeMatchesUniqueId,
-    getUniqueIdFromNode,
     installComboGetConfig,
     isUnassignedNode,
     refreshConnectedPrimitives,
@@ -55,34 +54,37 @@ function patchGraphToPromptOnce() {
 }
 
 /**
- * For each Prompt Stash Saver node in the open graph (including those nested in
- * subgraphs) with use_input_text === false, delete the "text" entry from that
- * node's inputs in the API prompt output dict.
+ * For each Prompt Stash Saver entry in the API prompt whose use_input_text is
+ * the literal value false, delete the "text" link from its inputs.
+ *
+ * The decision is made from the API prompt itself -- exactly what the backend
+ * will see -- rather than from the canvas widget. The canvas widget can be stale
+ * (e.g. use_input_text promoted to a subgraph input, or driven by a link), and
+ * mapping canvas nodes to prompt ids is fragile. If the two ever disagreed we
+ * would strip a link the backend then requests in check_lazy_status, causing
+ * "says it needs input text, but there is no input to that node at all".
  *
  * @param {Object|undefined} output - The API prompt map (node_id -> {inputs,...}).
  */
 function stripUnusedTextLinks(output) {
     if (!output || typeof output !== "object") return;
-    const rootGraph = app.graph;
-    if (!rootGraph) return;
 
-    walkGraph(rootGraph, (node) => {
-        const nodeClass = node?.comfyClass ?? node?.constructor?.comfyClass;
-        if (nodeClass !== "PromptStashSaver") return;
+    for (const entry of Object.values(output)) {
+        if (entry?.class_type !== "PromptStashSaver") continue;
+        const inputs = entry.inputs;
+        if (!inputs) continue;
 
-        const useInputWidget = node.widgets?.find((w) => w.name === "use_input_text");
-        if (!useInputWidget || useInputWidget.value === true) return;
-
-        const promptId = getUniqueIdFromNode(node);
-        const entry = output[promptId];
-        const link = entry?.inputs?.text;
+        // Only strip when use_input_text is definitively false. If it is a link
+        // ([node_id, slot]) or missing, its runtime value is unknown -- keep text.
+        if (inputs.use_input_text !== false) continue;
 
         // Only remove an actual upstream connection ([node_id, slot]); leave any
         // literal/widget value untouched.
+        const link = inputs.text;
         if (Array.isArray(link) && link.length === 2) {
-            delete entry.inputs.text;
+            delete inputs.text;
         }
-    });
+    }
 }
 
 // ── Vue Reactivity Helpers ───────────────────────────────────────────────

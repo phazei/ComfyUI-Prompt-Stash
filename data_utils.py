@@ -208,6 +208,24 @@ def init_data_file(node_base_dir):
     return data_file
 
 
+def prompt_has_input(prompt, unique_id, input_name):
+    """
+    Whether the API prompt contains `input_name` for node `unique_id`.
+
+    Used by check_lazy_status to raise a clear error when a lazy input is needed
+    but not connected, instead of ComfyUI's cryptic NodeInputError ("says it
+    needs input X, but there is no input to that node at all"). If the node can't
+    be found in the prompt (e.g. it was created by node expansion), returns True
+    so the input is requested as normal.
+    """
+    if not isinstance(prompt, dict) or unique_id is None:
+        return True
+    entry = prompt.get(str(unique_id))
+    if not isinstance(entry, dict):
+        return True
+    return input_name in entry.get("inputs", {})
+
+
 def update_node_in_workflow(workflow, unique_id, callback):
     """
     Traverses the workflow (including subgraphs) to find the node with unique_id.

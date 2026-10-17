@@ -2,7 +2,7 @@ import os
 import json
 from server import PromptServer
 import hashlib
-from .data_utils import init_data_file, update_node_in_workflow
+from .data_utils import init_data_file, update_node_in_workflow, prompt_has_input
 
 class PromptStashSaver:
     def __init__(self):
@@ -77,9 +77,14 @@ class PromptStashSaver:
         return m.hexdigest()
         
     def check_lazy_status(self, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None, prompt=None):
-        # Only need the text input if use_input_text is True
+        # Only need the text input if use_input_text is True.
         needed = []
         if use_input_text:
+            if not prompt_has_input(prompt, unique_id, "text"):
+                raise ValueError(
+                    f"Prompt Stash Saver (node {unique_id}): 'use_input_text' is on, but nothing "
+                    "is connected to the 'text' input. Connect a text input or switch to 'Use Prompt'."
+                )
             needed.append("text")
         return needed
 
