@@ -3,6 +3,7 @@ import json
 from server import PromptServer
 import hashlib
 from .data_utils import init_data_file, update_node_in_workflow, prompt_has_input
+from . import stash_sync
 
 class PromptStashSaver:
     def __init__(self):
@@ -27,6 +28,10 @@ class PromptStashSaver:
                 # widget order so widgets_values indices and saved workflows still map.
                 "load_saved": (["None"], {"default": "None"}),
                 "prompt_lists": (["default"], {"default": "default"}),
+                # Filled in by the frontend at queue time (hidden, no socket);
+                # used to carry input text forward to later runs. See stash_sync.py.
+                "stash_tab": ("STRING", {"default": "", "forceInput": True}),
+                "stash_token": ("STRING", {"default": "", "forceInput": True}),
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
@@ -57,13 +62,19 @@ class PromptStashSaver:
         return True
 
     @classmethod
-    def IS_CHANGED(cls, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None, prompt=None):
+    def IS_CHANGED(cls, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", stash_tab="", stash_token="", unique_id=None, extra_pnginfo=None, prompt=None):
         m = hashlib.sha256()
         
         # Always include these parameters as they affect the output
         m.update(str(use_input_text).encode())
         m.update(str(prompt_text).encode())
         m.update(str(unique_id).encode())
+
+        # Text carried forward from a True run the frontend hadn't taken in when
+        # this prompt was queued. IS_CHANGED runs when the prompt starts
+        # executing (not when queued), so prompts queued ahead see it.
+        carried = stash_sync.carried_entry(stash_tab, unique_id, stash_token)
+        m.update(str(carried["token"] if carried else "").encode())
 
         # These feed the "meta" output (prompt_name / list_name)
         m.update(str(save_as_key).encode())
@@ -76,7 +87,7 @@ class PromptStashSaver:
         
         return m.hexdigest()
         
-    def check_lazy_status(self, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None, prompt=None):
+    def check_lazy_status(self, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", stash_tab="", stash_token="", unique_id=None, extra_pnginfo=None, prompt=None):
         # Only need the text input if use_input_text is True.
         needed = []
         if use_input_text:
@@ -147,12 +158,13 @@ class PromptStashSaver:
         return False
 
     @staticmethod
-    def build_meta(use_input_text, text, save_as_key, load_saved, prompt_lists):
+    def build_meta(use_input_text, text, save_as_key, load_saved, prompt_lists, from_input=None):
         """Build the JSON string for the "meta" output.
 
         prompt_name precedence:
-          1. "llm input"  - text came in fresh via the `text` input this run
-                            (any save_as_key / load_saved on the node is stale)
+          1. "llm input"  - text came in via the `text` input, this run or carried
+                            forward from an earlier run (`from_input`); any
+                            save_as_key / load_saved on the node is stale
           2. save_as_key  - the user typed/loaded a name into "Save Name"
           3. load_saved   - a saved prompt is selected but Save Name is empty
           4. ""           - manual, unnamed text
@@ -160,7 +172,10 @@ class PromptStashSaver:
         key = (save_as_key or "").strip()
         loaded = load_saved if load_saved and load_saved != "None" else ""
 
-        if use_input_text and text is not None:
+        if from_input is None:
+            from_input = bool(use_input_text and text is not None)
+
+        if from_input:
             prompt_name = "llm input"
             source = "input"
         elif key:
@@ -183,19 +198,30 @@ class PromptStashSaver:
         }
         return json.dumps(meta, ensure_ascii=False, indent=2)
 
-    def process(self, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", unique_id=None, extra_pnginfo=None, prompt=None):
-        meta = self.build_meta(use_input_text, text, save_as_key, load_saved, prompt_lists)
+    def process(self, use_input_text=False, text="", prompt_text="", save_as_key="", load_saved="None", prompt_lists="default", stash_tab="", stash_token="", unique_id=None, extra_pnginfo=None, prompt=None):
+        from_input = bool(use_input_text and text is not None)
 
         # Update the prompt text based on use_input_text toggle
         output_text = prompt_text
-        if use_input_text and text is not None:
+        if from_input:
             output_text = text
-            # Send update to frontend to update prompt widget
-            PromptServer.instance.send_sync("prompt-stash-update-prompt", {
-                "node_id": unique_id,
-                "prompt": text
-            })
+            # Remember it so later runs use it even if the frontend misses the
+            # push below, then tell the frontend (only the matching tab applies it).
+            token = stash_sync.store_text(stash_tab, unique_id, text)
+            stash_sync.push_update(unique_id, text, stash_tab, token)
+        else:
+            # Off run: if a True run produced text the frontend hadn't taken in
+            # when this prompt was queued, use that instead of the stale widget.
+            carried = stash_sync.carried_entry(stash_tab, unique_id, stash_token)
+            if carried:
+                from_input = True
+                output_text = carried["text"]
+                stash_sync.push_update(unique_id, output_text, stash_tab, carried["token"])
 
+        # Text that came from the input (this run or carried) counts as "llm input".
+        meta = self.build_meta(use_input_text, text, save_as_key, load_saved, prompt_lists, from_input=from_input)
+
+        if from_input:
             # Handle both list and dict formats of extra_pnginfo
             workflow = None
             if isinstance(extra_pnginfo, list) and len(extra_pnginfo) > 0:

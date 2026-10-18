@@ -5,6 +5,7 @@ import time
 import hashlib
 from comfy.model_management import InterruptProcessingException
 from .data_utils import update_node_in_workflow, prompt_has_input
+from . import stash_sync
 
 class PromptStashPassthrough:
     status_by_id = {}  # Track pause status for each node instance
@@ -20,6 +21,10 @@ class PromptStashPassthrough:
                 "text": ("STRING", {"default": "", "forceInput": True, "tooltip": "Optional input text", "lazy": True}),
                 "prompt_text": ("STRING", {"multiline": True, "default": "", "placeholder": "Enter prompt text"}),
                 "pause_to_edit": ("BOOLEAN", {"default": False, "label_on": "Yes", "label_off": "No"}),
+                # Filled in by the frontend at queue time (hidden, no socket);
+                # used to carry input text forward to later runs. See stash_sync.py.
+                "stash_tab": ("STRING", {"default": "", "forceInput": True}),
+                "stash_token": ("STRING", {"default": "", "forceInput": True}),
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
@@ -35,13 +40,18 @@ class PromptStashPassthrough:
     
 
     @classmethod
-    def IS_CHANGED(cls, use_input_text=False, text="", prompt_text="", pause_to_edit=False, unique_id=None, extra_pnginfo=None, prompt=None):
+    def IS_CHANGED(cls, use_input_text=False, text="", prompt_text="", pause_to_edit=False, stash_tab="", stash_token="", unique_id=None, extra_pnginfo=None, prompt=None):
         m = hashlib.sha256()
         
         # Always include these parameters as they affect the output
         m.update(str(use_input_text).encode())
         m.update(str(prompt_text).encode())
         m.update(str(unique_id).encode())
+
+        # Text carried forward from a True run (see stash_sync.py). IS_CHANGED
+        # runs when the prompt starts executing, so prompts queued ahead see it.
+        carried = stash_sync.carried_entry(stash_tab, unique_id, stash_token)
+        m.update(str(carried["token"] if carried else "").encode())
         
         # Only include the text input if use_input_text is True
         if use_input_text and text is not None:
@@ -49,7 +59,7 @@ class PromptStashPassthrough:
 
         return m.hexdigest()
 
-    def check_lazy_status(self, use_input_text=False, text="", prompt_text="", pause_to_edit=False, unique_id=None, extra_pnginfo=None, prompt=None):
+    def check_lazy_status(self, use_input_text=False, text="", prompt_text="", pause_to_edit=False, stash_tab="", stash_token="", unique_id=None, extra_pnginfo=None, prompt=None):
         needed = []
         if use_input_text:
             if not prompt_has_input(prompt, unique_id, "text"):
@@ -60,16 +70,25 @@ class PromptStashPassthrough:
             needed.append("text")
         return needed
 
-    def process(self, use_input_text=False, text="", prompt_text="", pause_to_edit=False, unique_id=None, extra_pnginfo=None, prompt=None):
+    def process(self, use_input_text=False, text="", prompt_text="", pause_to_edit=False, stash_tab="", stash_token="", unique_id=None, extra_pnginfo=None, prompt=None):
+        from_input = bool(use_input_text and text is not None)
+
         # Update the prompt text based on use_input_text toggle
         output_text = prompt_text
-        if use_input_text and text is not None:
+        if from_input:
             output_text = text
-            # Send update to frontend to update prompt widget
-            PromptServer.instance.send_sync("prompt-stash-update-prompt", {
-                "node_id": unique_id,
-                "prompt": text
-            })
+            # Remember it so later runs use it even if the frontend misses the
+            # push below, then tell the frontend (only the matching tab applies it).
+            token = stash_sync.store_text(stash_tab, unique_id, text)
+            stash_sync.push_update(unique_id, text, stash_tab, token)
+        else:
+            # Off run: if a True run produced text the frontend hadn't taken in
+            # when this prompt was queued, use that instead of the stale widget.
+            carried = stash_sync.carried_entry(stash_tab, unique_id, stash_token)
+            if carried:
+                from_input = True
+                output_text = carried["text"]
+                stash_sync.push_update(unique_id, output_text, stash_tab, carried["token"])
 
         # Handle pausing if pause_to_edit is enabled
         if pause_to_edit:
@@ -106,7 +125,11 @@ class PromptStashPassthrough:
             if unique_id in self.status_by_id:
                 del self.status_by_id[unique_id]
 
-        if (use_input_text and text is not None) or (pause_to_edit):
+            # Keep the remembered text in step with the edit (same token, so a
+            # frontend that already has this token keeps using its widget).
+            stash_sync.replace_text(stash_tab, unique_id, output_text)
+
+        if from_input or pause_to_edit:
 
             # Handle both list and dict formats of extra_pnginfo
             workflow = None

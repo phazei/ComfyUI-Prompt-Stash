@@ -73,6 +73,10 @@ This lightweight node allows you to modify text as it passes through your workfl
    - When paused, you can edit the text in real-time.
    - Click **Continue** when you're done editing to resume the workflow.
 
+### Captured Text Carries Forward
+
+When **Use Input** captures new text (e.g. from an LLM), later runs with **Use Prompt** use that text even if the node never received it in the browser -- for example runs you queued ahead, or a workflow tab you'd switched away from. Switching back to the tab updates the **Prompt Text** box to the latest captured text. Updates only go to the tab the run was queued from, so another open workflow's prompt is never overwritten. (Remembered until ComfyUI restarts.)
+
 ### Every Nth Queue Node
 
 Outputs **True** once every N runs, **False** otherwise. Connect it to **Use Input** on a Saver or Passthrough to refresh the prompt from an LLM every N runs and reuse it in between.

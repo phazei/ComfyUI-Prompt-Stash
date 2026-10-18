@@ -1,6 +1,7 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import { nodeMatchesUniqueId, getUniqueIdFromNode, isUnassignedNode, resolveConstantBool, setDefaultLabel } from "./utils.js";
+import { handlePushedUpdate, installStashSync } from "./stash_sync.js";
 
 // ── Cache-Invalidation Workaround ────────────────────────────────────────
 //
@@ -387,6 +388,14 @@ app.registerExtension({
                     }
                 };
 
+                // Carry input text forward across runs/tabs (see stash_sync.js).
+                installStashSync(this, (text) => {
+                    if (!promptWidget) return;
+                    promptWidget.value = text;
+                    this.serialize_widgets = true;
+                    app.graph.setDirtyCanvas(true, true);
+                });
+
                 this.handlePromptStashUpdatePrompt = (event) => {
                     // Skip if node is in invalid state
                     if (isUnassignedNode(this)) {
@@ -394,13 +403,8 @@ app.registerExtension({
                         return;
                     }
 
-                    if (nodeMatchesUniqueId(this, event.detail.node_id)) {
-                        if (promptWidget) {
-                            promptWidget.value = event.detail.prompt;
-                            this.serialize_widgets = true;
-                            app.graph.setDirtyCanvas(true, true);
-                        }
-                    }
+                    // Applies only to this node in the tab the run was queued from.
+                    handlePushedUpdate(this, event.detail);
                 };
 
                 // Listen for set-continue event with show/hide parameter

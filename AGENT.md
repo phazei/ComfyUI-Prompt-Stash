@@ -22,6 +22,7 @@ Prompt Stash is a small ComfyUI custom node pack for saving prompts into named l
 | `prompt_stash_passthrough_node.py` | `PromptStashPassthrough` -- text capture + "pause to edit"; owns the `continue` / `clear_all` routes |
 | `prompt_stash_manager_node.py` | `PromptStashManager` -- add/delete/sort lists (no outputs, UI-only node) |
 | `prompt_stash_every_nth_node.py` | `PromptStashEveryNthQueue` -- BOOLEAN True once every N queues; the countdown lives in the frontend |
+| `stash_sync.py` | In-memory carry-forward of captured input text per (tab path, node), `/prompt_stash_saver/latest_input` route |
 | `data_utils.py` | Data file location/init/migration, import validation + merge, workflow/prompt helpers |
 | `default_prompt_stash_data.json` | Template copied to the user data file on first run |
 | `js/*.js` | Frontend extensions, one per node + `multi_button.js` widget + shared `utils.js` |
@@ -38,7 +39,7 @@ Prompt Stash is a small ComfyUI custom node pack for saving prompts into named l
 - Route handlers create a **fresh node instance per request** (`PromptStashSaver()` / `PromptStashManager()`), and `__init__` re-reads the data file from disk. There is no in-memory cache shared between requests, and no file lock
 - Server -> client pushes go through `PromptServer.instance.send_sync(...)`:
   - `prompt-stash-update-all` `{lists}` -- after any data change, and **also on every `PromptStashSaver()` construction** (`load_data()` broadcasts). Saver JS relies on this: it calls `/prompt_stash_saver/init` and ignores the response, getting its lists from the broadcast that the constructor sends. Don't remove the broadcast from `load_data()` without changing `prompt_stash_saver.js` to read the `init` response
-  - `prompt-stash-update-prompt` `{node_id, prompt}` -- captured input text pushed into the node's prompt box
+  - `prompt-stash-update-prompt` `{node_id, prompt, tab, token}` -- captured input text pushed into the node's prompt box. Only the node in the tab whose path equals `tab` applies it (`handlePushedUpdate`); an empty `tab` falls back to node-id-only matching
   - `prompt-stash-set-continue` `{node_id, show}` -- show/hide the Passthrough Continue button
 - Output messages use `print(...)`, prefixed `Prompt Stash:` for normal messages (no `logging` module in use)
 
@@ -63,11 +64,12 @@ Prompt Stash is a small ComfyUI custom node pack for saving prompts into named l
 - **Passthrough**: `pause_to_edit` blocks the executor thread in a `time.sleep(0.1)` loop until `/prompt_stash_passthrough/continue/{node_id}` sets status `"continue"` (with the edited text). State is in class-level dicts (`status_by_id`, `edited_text_by_id`) keyed by the **string** UNIQUE_ID (`"5"` or `"12:5"` in subgraphs). Re-sends `set-continue` every 2s so a refreshed browser gets the button back. `/clear_all` (Manager's "(Clear All Paused)" button) releases every paused node
 - **Manager**: no outputs, `process()` is a no-op. The `existing_lists` combo is created in JS (not declared in Python)
 - **Every Nth Queue**: `every` (INT) + hidden `value` (BOOLEAN, socket removed in JS); `process()` just returns `value`. The countdown is `node.properties.countdown` (1 = True next run), never sent to the backend. A widget `beforeQueued` hook (called by the frontend once per queued prompt, before `graphToPrompt`, for nodes in subgraphs too) writes `value` and advances the countdown -- skipped for muted/bypassed nodes, and not advanced on partial execution. Only `value` reaches the backend, so off runs share one cache key
+- **Carry-forward (`stash_sync.py` / `js/stash_sync.js`)**: Saver and Passthrough declare `stash_tab` / `stash_token` as `forceInput` STRINGs (appended last). JS removes their sockets and adds hidden prompt-only widgets (`serialize: false`, `serializeValue`) that send the active tab path and `node.properties.prompt_stash_token`. A True run stores its text under (tab, UNIQUE_ID) with a fresh token; an off run whose sent token differs uses the stored text (and rewrites metadata as for input text). `IS_CHANGED` hashes the carried token -- it runs when the prompt starts executing, so prompts queued ahead pick it up. Tokens are compared for equality only (restart-safe). Keyed by tab path, not workflow id: the id survives saving and re-opening from an image, so two tabs can share it. On `afterLoadGraph` (load and tab switch) nodes fetch text they missed. Memory only
 
 ### JavaScript (Frontend Extensions)
 
 - Plain ES modules, no build step. Imports: `import { app } from "../../scripts/app.js"`, `import { api } from "../../scripts/api.js"`, shared helpers from `./utils.js`
-- Extension names: `phazei.PromptStashSaver`, `phazei.PromptStashPassthrough`, `phazei.PromptStashManager`, `phazei.PromptStashEveryNthQueue`, `phazei.MULTI_BUTTON`
+- Extension names: `phazei.PromptStashSaver`, `phazei.PromptStashPassthrough`, `phazei.PromptStashManager`, `phazei.PromptStashEveryNthQueue`, `phazei.PromptStashSync`, `phazei.MULTI_BUTTON`
 - Pattern: `beforeRegisterNodeDef` -> wrap `nodeType.prototype.onNodeCreated` (always call the original first) -> find widgets by `.name` -> attach callbacks / listeners -> wrap `onRemoved` to remove every `api` listener and interval
 - Event handlers are stored on the node (`this.handlePromptStash...`) so `onRemoved` can unregister the same function. Each handler starts with `if (isUnassignedNode(this)) { this.onRemoved?.(); return; }` to drop listeners of detached/zombie nodes
 - Match server pushes to nodes with `nodeMatchesUniqueId(node, event.detail.node_id)`; build ids to send with `getUniqueIdFromNode(node)`. Both are subgraph-aware
@@ -148,7 +150,7 @@ Prefer the frontend's own data model (widgets, values, labels) over custom drawi
 `widgets_values` in saved workflows is positional. `forceInput` inputs (`text`) don't take a slot. New inputs must be **appended at the end** of `optional`; never reorder or remove existing ones. `process()` writes metadata by index: Saver `0 = use_input_text`, `1 = prompt_text`; Passthrough adds `2 = pause_to_edit`. Update those indices if the layout ever changes.
 
 ### Lazy Inputs Still Invalidate the Cache
-ComfyUI folds the full signature of every *linked* upstream node into a node's cache key, even for lazy inputs it never requests (ComfyUI issue #11744). Saver and Passthrough each wrap `app.graphToPrompt` once (`patchGraphToPromptOnce`) and delete the `text` link from the API prompt when `inputs.use_input_text === false`. The decision is made **from the API prompt**, not the canvas widget -- the widget can be stale (promoted to a subgraph input, driven by a link). If they disagreed, the backend would request a `text` input that had been stripped. Only strip literal `false`; a link or missing value means unknown, keep it.
+ComfyUI folds the full signature of every *linked* upstream node into a node's cache key, even for lazy inputs it never requests (ComfyUI issue #11744). Saver and Passthrough each wrap `app.graphToPrompt` once (`patchGraphToPromptOnce`) and delete the `text` link from the API prompt when `use_input_text` is known to be false. The decision is made **from the API prompt**, not the canvas widget -- the widget can be stale (promoted to a subgraph input, driven by a link). If they disagreed, the backend would request a `text` input that had been stripped. `resolveConstantBool` (utils.js) accepts a literal `false` or a link to a constant boolean source (`PromptStashEveryNthQueue`, core `PrimitiveBoolean`) whose `inputs.value` is a literal; any other link or a missing value means unknown, keep it. Note a link-driven bool still keeps every node upstream of it in the cache key.
 
 ### Combo Options Live Only on the Client
 The real `load_saved` / `prompt_lists` options are never sent to the backend's node definition. Consequences:
@@ -209,6 +211,7 @@ There is no automated test suite. Verify manually in ComfyUI. **Run each UI chec
 - Saving / loading / deleting prompts, switching lists, Manager add / delete / sort, import / export
 - `use_input_text` on and off (and on with nothing connected -> clear error)
 - Every Nth Queue driving `use_input_text`: off runs keep the LLM and sampler cached; batch count > 1 advances once per item
+- Carry-forward: queue several runs ahead across a True run (later off runs use the new text); run in one tab while viewing another (the other tab's prompt is untouched; switching back shows the new text)
 - Nodes inside a subgraph (continue button, captured text update), including entering and leaving the subgraph while paused
 - Save / Delete / Sort buttons respond to clicks and grey out correctly (`MULTI_BUTTON` disabled state)
 - Saving a prompt shows it in every Saver's dropdown right away, with no stale options or red outline in Vue

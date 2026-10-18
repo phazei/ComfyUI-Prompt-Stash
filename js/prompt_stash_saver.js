@@ -1,7 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import {
-    nodeMatchesUniqueId,
     installComboGetConfig,
     isUnassignedNode,
     refreshConnectedPrimitives,
@@ -10,6 +9,7 @@ import {
     syncValueToConnectedPrimitive,
     walkGraph,
 } from "./utils.js";
+import { handlePushedUpdate, installStashSync } from "./stash_sync.js";
 
 // ── Cache-Invalidation Workaround ────────────────────────────────────────
 //
@@ -469,23 +469,26 @@ app.registerExtension({
                     }
                 };
 
+                // Carry input text forward across runs/tabs (see stash_sync.js).
+                installStashSync(this, (text) => {
+                    if (!promptWidget) return;
+                    promptWidget.value = text;
+                    saveKeyWidget.value = "";
+                    this.serialize_widgets = true;
+                    app.graph.setDirtyCanvas(true, true);
+                    // Update Save/Delete row after external prompt injection
+                    this._refreshSaveDeleteRow?.();
+                });
+
                 this.handlePromptStashUpdatePrompt = (event) => {
                     // Skip if node is in invalid state
                     if (isUnassignedNode(this)) {
                         this.onRemoved?.();
                         return;
                     }
-                    
-                    if (nodeMatchesUniqueId(this, event.detail.node_id)) {
-                        if (promptWidget) {
-                            promptWidget.value = event.detail.prompt;
-                            saveKeyWidget.value = "";
-                            this.serialize_widgets = true;
-                            app.graph.setDirtyCanvas(true, true);
-                            // Update Save/Delete row after external prompt injection
-                            this._refreshSaveDeleteRow?.();
-                        }
-                    }
+
+                    // Applies only to this node in the tab the run was queued from.
+                    handlePushedUpdate(this, event.detail);
                 };
 
                 // Listen for updates from server
