@@ -5,6 +5,7 @@ import json
 from .prompt_stash_passthrough_node import PromptStashPassthrough
 from .prompt_stash_saver_node import PromptStashSaver
 from .prompt_stash_manager_node import PromptStashManager
+from .prompt_stash_every_nth_node import PromptStashEveryNthQueue
 from aiohttp import web
 from server import PromptServer
 from .data_utils import get_user_data_directory, validate_import_data, deep_merge_lists
@@ -176,13 +177,15 @@ async def import_data(request):
 NODE_CLASS_MAPPINGS = {
     "PromptStashPassthrough": PromptStashPassthrough,
     "PromptStashSaver": PromptStashSaver,
-    "PromptStashManager": PromptStashManager
+    "PromptStashManager": PromptStashManager,
+    "PromptStashEveryNthQueue": PromptStashEveryNthQueue,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "PromptStashPassthrough": "Prompt Stash Passthrough",
     "PromptStashSaver": "Prompt Stash Saver",
-    "PromptStashManager": "Prompt Stash Manager"
+    "PromptStashManager": "Prompt Stash Manager",
+    "PromptStashEveryNthQueue": "Every Nth Queue (Prompt Stash)",
 }
 
 WEB_DIRECTORY = "./js"

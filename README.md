@@ -73,6 +73,16 @@ This lightweight node allows you to modify text as it passes through your workfl
    - When paused, you can edit the text in real-time.
    - Click **Continue** when you're done editing to resume the workflow.
 
+### Every Nth Queue Node
+
+Outputs **True** once every N runs, **False** otherwise. Connect it to **Use Input** on a Saver or Passthrough to refresh the prompt from an LLM every N runs and reuse it in between.
+
+1. **every**: how many runs per True.
+2. The status line shows **True next run** or **True in N runs**.
+3. Buttons: **Next** (True on the next run), **Delay +1** (push the next True back one run), **Reset** (start a full N-run countdown).
+
+The countdown is resolved when you queue, so on the False runs the LLM doesn't run and everything after the stash node stays cached. The countdown is saved with the workflow; running a single output node ("run" on a node) doesn't advance it.
+
 ### Prompt Stash Manager Node
 
 This node helps you manage your prompt lists and workflow state.

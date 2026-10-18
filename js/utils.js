@@ -216,6 +216,36 @@ export function walkGraph(graph, callback) {
 }
 
 /**
+ * Node classes whose single BOOLEAN output (slot 0) is exactly their literal
+ * `value` input, so the value is known from the queued prompt before anything
+ * executes. Every Nth Queue writes its resolved value there at queue time.
+ */
+const CONSTANT_BOOL_SOURCES = new Set(["PromptStashEveryNthQueue", "PrimitiveBoolean"]);
+
+/**
+ * Resolve an API-prompt input to a boolean if it is knowable at queue time:
+ * either a literal boolean, or a link to a constant boolean source node whose
+ * `value` is a literal. Returns undefined when the value is only known at
+ * runtime (any other link, missing, or non-boolean).
+ *
+ * @param {Object} output - The API prompt map (node_id -> {class_type, inputs}).
+ * @param {*} input - The input value from a node's `inputs` entry.
+ * @returns {boolean|undefined}
+ */
+export function resolveConstantBool(output, input) {
+    if (typeof input === "boolean") return input;
+    if (!Array.isArray(input) || input.length !== 2) return undefined;
+
+    const [sourceId, sourceSlot] = input;
+    if (Number(sourceSlot) !== 0) return undefined;
+    const source = output?.[String(sourceId)];
+    if (!source || !CONSTANT_BOOL_SOURCES.has(source.class_type)) return undefined;
+
+    const value = source.inputs?.value;
+    return typeof value === "boolean" ? value : undefined;
+}
+
+/**
  * The id LiteGraph assigns to a node that is not (yet) part of a graph.
  * ComfyUI frontend >=1.46 brands node ids as strings ("-1"); earlier versions
  * used the number -1.

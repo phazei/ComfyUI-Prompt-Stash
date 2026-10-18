@@ -5,6 +5,7 @@ import {
     installComboGetConfig,
     isUnassignedNode,
     refreshConnectedPrimitives,
+    resolveConstantBool,
     setDefaultLabel,
     syncValueToConnectedPrimitive,
     walkGraph,
@@ -74,9 +75,10 @@ function stripUnusedTextLinks(output) {
         const inputs = entry.inputs;
         if (!inputs) continue;
 
-        // Only strip when use_input_text is definitively false. If it is a link
-        // ([node_id, slot]) or missing, its runtime value is unknown -- keep text.
-        if (inputs.use_input_text !== false) continue;
+        // Only strip when use_input_text is definitively false: a literal, or a
+        // link to a constant boolean source (Every Nth Queue, core Boolean). Any
+        // other link is only known at runtime -- keep text.
+        if (resolveConstantBool(output, inputs.use_input_text) !== false) continue;
 
         // Only remove an actual upstream connection ([node_id, slot]); leave any
         // literal/widget value untouched.

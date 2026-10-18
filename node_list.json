@@ -1,5 +1,6 @@
 {
     "PromptStashPassthrough": "Simple node to accept new text or use existing text",
     "PromptStashSaver": "Save and manage prompts in organized lists and capture text nodes",
-    "PromptStashManager": "Manage prompt stash lists and categories"
+    "PromptStashManager": "Manage prompt stash lists and categories",
+    "PromptStashEveryNthQueue": "Outputs True once every N queued runs, resolved at queue time so off runs stay cached"
 }
