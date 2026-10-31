@@ -1,0 +1,625 @@
+{
+  "id": "630b04e2-a2ab-47ca-a484-a5b948558335",
+  "revision": 0,
+  "last_node_id": 7,
+  "last_link_id": 9,
+  "nodes": [
+    {
+      "id": 2,
+      "type": "Display Any (rgthree)",
+      "pos": [
+        4811.764867419244,
+        5347.058239682933
+      ],
+      "size": [
+        179.640234375,
+        76
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "dir": 3,
+          "localized_name": "source",
+          "name": "source",
+          "type": "*",
+          "link": 2
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "aux_id": "phazei/rgthree-comfy",
+        "ver": "66af6c30af8d8582097f28362871985fd23c3bf1",
+        "Node name for S&R": "Display Any (rgthree)"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "widgets_values_named": {
+        "output": ""
+      }
+    },
+    {
+      "id": 3,
+      "type": "217d9ec3-5667-4ef2-982c-645517e7f1ea",
+      "pos": [
+        4240,
+        5490
+      ],
+      "size": [
+        270,
+        120
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "load_saved",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "load_saved"
+          },
+          "link": null
+        },
+        {
+          "name": "prompt_lists",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "prompt_lists"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "text",
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            2
+          ]
+        },
+        {
+          "name": "text_1",
+          "type": "STRING",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.43.0",
+        "previewExposures": []
+      },
+      "widgets_values": [
+        "SystemPrompt Klein 9B",
+        "WAN Video Prompts"
+      ],
+      "widgets_values_named": {
+        "load_saved": "SystemPrompt Klein 9B",
+        "prompt_lists": "WAN Video Prompts"
+      }
+    },
+    {
+      "id": 7,
+      "type": "Display Any (rgthree)",
+      "pos": [
+        4810,
+        5470
+      ],
+      "size": [
+        179.640234375,
+        76
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "dir": 3,
+          "localized_name": "source",
+          "name": "source",
+          "type": "*",
+          "link": 9
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "aux_id": "phazei/rgthree-comfy",
+        "ver": "66af6c30af8d8582097f28362871985fd23c3bf1",
+        "Node name for S&R": "Display Any (rgthree)"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "widgets_values_named": {
+        "output": ""
+      }
+    }
+  ],
+  "links": [
+    [
+      2,
+      3,
+      0,
+      2,
+      0,
+      "STRING"
+    ],
+    [
+      9,
+      3,
+      1,
+      7,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [],
+  "definitions": {
+    "subgraphs": [
+      {
+        "id": "217d9ec3-5667-4ef2-982c-645517e7f1ea",
+        "version": 1,
+        "state": {
+          "lastGroupId": 0,
+          "lastNodeId": 7,
+          "lastLinkId": 9,
+          "lastRerouteId": 0
+        },
+        "revision": 0,
+        "config": {},
+        "name": "New Subgraph",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            3690,
+            5480,
+            128,
+            88
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            4870,
+            5220,
+            128,
+            88
+          ]
+        },
+        "inputs": [
+          {
+            "id": "0d2a87c2-0738-4cc3-9852-348632b25cc0",
+            "name": "load_saved",
+            "type": "COMBO",
+            "linkIds": [
+              3
+            ],
+            "pos": [
+              3794,
+              5504
+            ]
+          },
+          {
+            "id": "74587ca9-e8d9-4f9b-9418-987d05ef2367",
+            "name": "prompt_lists",
+            "type": "COMBO",
+            "linkIds": [
+              4
+            ],
+            "pos": [
+              3794,
+              5524
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "3581d4cd-1cba-4128-9b67-c223fdaca5bc",
+            "name": "text",
+            "type": "STRING",
+            "linkIds": [
+              7
+            ],
+            "localized_name": "text",
+            "pos": [
+              4894,
+              5244
+            ]
+          },
+          {
+            "id": "3c027030-4583-4463-a9fa-27404487c73d",
+            "name": "text_1",
+            "type": "STRING",
+            "linkIds": [
+              8
+            ],
+            "pos": [
+              4894,
+              5264
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 1,
+            "type": "PromptStashSaver",
+            "pos": [
+              4020,
+              5240
+            ],
+            "size": [
+              570,
+              530
+            ],
+            "flags": {},
+            "order": 3,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "shape": 7,
+                "type": "STRING",
+                "link": null
+              },
+              {
+                "localized_name": "use_input_text",
+                "name": "use_input_text",
+                "shape": 7,
+                "type": "BOOLEAN",
+                "widget": {
+                  "name": "use_input_text"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "prompt_text",
+                "name": "prompt_text",
+                "shape": 7,
+                "type": "STRING",
+                "widget": {
+                  "name": "prompt_text"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "save_as_key",
+                "name": "save_as_key",
+                "shape": 7,
+                "type": "STRING",
+                "widget": {
+                  "name": "save_as_key"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "load_saved",
+                "name": "load_saved",
+                "shape": 7,
+                "type": "COMBO",
+                "widget": {
+                  "name": "load_saved"
+                },
+                "link": 3
+              },
+              {
+                "localized_name": "prompt_lists",
+                "name": "prompt_lists",
+                "shape": 7,
+                "type": "COMBO",
+                "widget": {
+                  "name": "prompt_lists"
+                },
+                "link": 4
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "links": [
+                  8
+                ]
+              },
+              {
+                "localized_name": "meta",
+                "name": "meta",
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "title": "Promoted to subgraph",
+            "properties": {
+              "cnr_id": "confyui-node-prompt-stash-saver",
+              "ver": "591aa08da43a510fe0d2a7579c4608c87e577668",
+              "Node name for S&R": "PromptStashSaver"
+            },
+            "widgets_values": [
+              false,
+              "",
+              "",
+              "None",
+              "Flux"
+            ],
+            "widgets_values_named": {
+              "use_input_text": false,
+              "prompt_text": "",
+              "save_as_key": "",
+              "load_saved": "None",
+              "prompt_lists": "Flux"
+            }
+          },
+          {
+            "id": 4,
+            "type": "PromptStashSaver",
+            "pos": [
+              4010,
+              4670
+            ],
+            "size": [
+              550,
+              300
+            ],
+            "flags": {},
+            "order": 2,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "shape": 7,
+                "type": "STRING",
+                "link": null
+              },
+              {
+                "localized_name": "use_input_text",
+                "name": "use_input_text",
+                "shape": 7,
+                "type": "BOOLEAN",
+                "widget": {
+                  "name": "use_input_text"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "prompt_text",
+                "name": "prompt_text",
+                "shape": 7,
+                "type": "STRING",
+                "widget": {
+                  "name": "prompt_text"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "save_as_key",
+                "name": "save_as_key",
+                "shape": 7,
+                "type": "STRING",
+                "widget": {
+                  "name": "save_as_key"
+                },
+                "link": null
+              },
+              {
+                "localized_name": "load_saved",
+                "name": "load_saved",
+                "shape": 7,
+                "type": "COMBO",
+                "widget": {
+                  "name": "load_saved"
+                },
+                "link": 5
+              },
+              {
+                "localized_name": "prompt_lists",
+                "name": "prompt_lists",
+                "shape": 7,
+                "type": "COMBO",
+                "widget": {
+                  "name": "prompt_lists"
+                },
+                "link": 6
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "links": [
+                  7
+                ]
+              },
+              {
+                "localized_name": "meta",
+                "name": "meta",
+                "type": "STRING",
+                "links": []
+              }
+            ],
+            "title": "Primitive inside subgraph",
+            "properties": {
+              "cnr_id": "confyui-node-prompt-stash-saver",
+              "ver": "591aa08da43a510fe0d2a7579c4608c87e577668",
+              "Node name for S&R": "PromptStashSaver"
+            },
+            "widgets_values": [
+              false,
+              "You are an AI trained to generate detailed prompts for Stable Diffusion image generation. Your role is to convert simple image requests into a single rich, descriptive prompt. Generate a single prompt up to 70 words long. This is very important.\n\nFollow these rules for EVERY response:\n\n1. Output ONLY the single prompt text, without any quotation marks.\n2. Stable Diffusion does not understand figurative language - use plain, literal descriptions instead of metaphors, symbolism, or abstract phrasing.\n3. Always include these elements:\n   * Main subject description\n   * Setting or environment details\n   * Lighting and atmospheric conditions\n   * Multiple weighted modifiers in parentheses\n4. Weights must be between 1 and 2 only.\n5. Keep descriptions focused and concise.\n\nFormat your response like this:\n{detailed subject}, {detailed setting}, {lighting/atmosphere}, ({modifier:weight}), ({modifier:weight}), ({modifier:weight})\n\nDo not explain your response or add any commentary. Output only the single prompt text.\n",
+              "SDXL Clean",
+              "SDXL Clean",
+              "SDXL Personas"
+            ],
+            "widgets_values_named": {
+              "use_input_text": false,
+              "prompt_text": "You are an AI trained to generate detailed prompts for Stable Diffusion image generation. Your role is to convert simple image requests into a single rich, descriptive prompt. Generate a single prompt up to 70 words long. This is very important.\n\nFollow these rules for EVERY response:\n\n1. Output ONLY the single prompt text, without any quotation marks.\n2. Stable Diffusion does not understand figurative language - use plain, literal descriptions instead of metaphors, symbolism, or abstract phrasing.\n3. Always include these elements:\n   * Main subject description\n   * Setting or environment details\n   * Lighting and atmospheric conditions\n   * Multiple weighted modifiers in parentheses\n4. Weights must be between 1 and 2 only.\n5. Keep descriptions focused and concise.\n\nFormat your response like this:\n{detailed subject}, {detailed setting}, {lighting/atmosphere}, ({modifier:weight}), ({modifier:weight}), ({modifier:weight})\n\nDo not explain your response or add any commentary. Output only the single prompt text.\n",
+              "save_as_key": "SDXL Clean",
+              "load_saved": "SDXL Clean",
+              "prompt_lists": "SDXL Personas"
+            }
+          },
+          {
+            "id": 5,
+            "type": "PrimitiveNode",
+            "pos": [
+              3520,
+              4700
+            ],
+            "size": [
+              210,
+              106
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "COMBO",
+                "type": "COMBO",
+                "widget": {
+                  "name": "load_saved"
+                },
+                "links": [
+                  5
+                ]
+              }
+            ],
+            "title": "load_saved",
+            "properties": {
+              "Run widget replace on values": false
+            },
+            "widgets_values": [
+              "SDXL Clean",
+              "fixed",
+              ""
+            ],
+            "widgets_values_named": {
+              "value": "SDXL Clean",
+              "control_after_generate": "fixed",
+              "control_filter_list": ""
+            }
+          },
+          {
+            "id": 6,
+            "type": "PrimitiveNode",
+            "pos": [
+              3520,
+              4890
+            ],
+            "size": [
+              210,
+              106
+            ],
+            "flags": {},
+            "order": 1,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "COMBO",
+                "type": "COMBO",
+                "widget": {
+                  "name": "prompt_lists"
+                },
+                "links": [
+                  6
+                ]
+              }
+            ],
+            "title": "prompt_lists",
+            "properties": {
+              "Run widget replace on values": false
+            },
+            "widgets_values": [
+              "SDXL Personas",
+              "randomize",
+              ""
+            ],
+            "widgets_values_named": {
+              "value": "SDXL Personas",
+              "control_after_generate": "randomize",
+              "control_filter_list": ""
+            }
+          }
+        ],
+        "groups": [],
+        "links": [
+          {
+            "id": 3,
+            "origin_id": -10,
+            "origin_slot": 0,
+            "target_id": 1,
+            "target_slot": 4,
+            "type": "COMBO"
+          },
+          {
+            "id": 4,
+            "origin_id": -10,
+            "origin_slot": 1,
+            "target_id": 1,
+            "target_slot": 5,
+            "type": "COMBO"
+          },
+          {
+            "id": 5,
+            "origin_id": 5,
+            "origin_slot": 0,
+            "target_id": 4,
+            "target_slot": 4,
+            "type": "COMBO"
+          },
+          {
+            "id": 6,
+            "origin_id": 6,
+            "origin_slot": 0,
+            "target_id": 4,
+            "target_slot": 5,
+            "type": "COMBO"
+          },
+          {
+            "id": 7,
+            "origin_id": 4,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 8,
+            "origin_id": 1,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 1,
+            "type": "STRING"
+          }
+        ],
+        "extra": {}
+      }
+    ]
+  },
+  "config": {},
+  "extra": {
+    "comfyui_mcp": {
+      "workflow_uuid": "a00e6b5a-255e-4fcc-b5cc-990e1974e1ea"
+    },
+    "ds": {
+      "scale": 1.2100000000000006,
+      "offset": [
+        -3421.934126241228,
+        -4812.350001294816
+      ]
+    }
+  },
+  "version": 0.4
+}

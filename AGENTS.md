@@ -1,4 +1,4 @@
-# AGENT.md
+# AGENTS.md
 
 Guidelines for working on this project. Read this before making changes.
 
@@ -25,9 +25,10 @@ Prompt Stash is a small ComfyUI custom node pack for saving prompts into named l
 | `stash_sync.py` | In-memory carry-forward of captured input text per (tab path, node), `/prompt_stash_saver/latest_input` route |
 | `data_utils.py` | Data file location/init/migration, import validation + merge, workflow/prompt helpers |
 | `default_prompt_stash_data.json` | Template copied to the user data file on first run |
-| `js/*.js` | Frontend extensions, one per node + `multi_button.js` widget + shared `utils.js` |
+| `js/*.js` | Frontend extensions, one per node + `multi_button.js` widget + shared `utils.js` + `subgraph_widgets.js` (promoted widgets) |
 | `node_list.json` | Registry descriptions per node |
 | `example_workflows/` | Sample workflow (JSON + PNG) |
+| `tests/` | Plain Node tests for the pure JS modules, mock graphs, workflow fixtures (see `tests/README.md`) |
 
 ### Python (Nodes + Routes)
 
@@ -83,6 +84,16 @@ Prompt Stash is a small ComfyUI custom node pack for saving prompts into named l
 - `nodeMatchesUniqueId`, `getUniqueIdFromNode`, `isUnassignedNode`, `walkGraph`, `setDefaultLabel`
 - Primitive-node support: `findGetConfigSymbol`, `installComboGetConfig`, `refreshConnectedPrimitives`, `syncValueToConnectedPrimitive`
 - `forceWidgetReactiveUpdate(node, widget)` -- Vue re-render + clears `value_not_in_list` error
+- Keep `utils.js` free of imports and `app` / DOM access so tests can load it under Node
+
+### Promoted Subgraph Widgets (`js/subgraph_widgets.js`)
+
+Pure module (imports only `utils.js`), unit-tested in `tests/subgraph_widgets.test.mjs`.
+- `getSourceWidget(node, name)` -- the widget that supplies the value: the widget itself, or (input linked to a subgraph input) the container's outer widget, followed up through nested containers; null when the outermost container input is fed by another node
+- `findContainer(graph)`, `findPromotedTargets(container, input)` (real nodes + widget names an outer input feeds, through nesting), `hostWidgetForInput`, `isContainer`
+- `installPromotedWidgetHooks(container)` -- wraps each outer widget's `callback` (original first, then forward) and re-wraps on `subgraph.events` `widget-promoted` and whenever a new object lands in an input's `_widget` slot; listener dropped in `onRemoved`. Only inputs that are unlinked and feed a node with `onPromotedWidgetChanged` are wrapped
+- Opt-in interface on inner nodes: `onPromotedWidgetChanged(name, value, host)` (user changed the outer widget) and `onPromotedWidgetBound(name, host)` (outer widget (re)created; sync without side effects)
+- Saver extension hooks: `nodeCreated` and `afterConfigureGraph` install the hooks on every container
 
 ## LiteGraph + Nodes 2.0 Compatibility
 
@@ -144,6 +155,15 @@ Prefer the frontend's own data model (widgets, values, labels) over custom drawi
 - After changing widget values from code: `this.serialize_widgets = true` and `app.graph.setDirtyCanvas(true, true)`
 - Long explanatory comments for any frontend workaround, including *why* and the ComfyUI version/issue that caused it
 
+### README
+
+The README is for users, not a changelog. Keep the first look short:
+
+- Each section: one or two plain sentences, a picture if there is one, and at most 3-4 bullets.
+- Everything else (input/output tables, settings, limitations, edge cases) goes in a collapsed `<details><summary>...</summary>` block, with a blank line after `<summary>` so the markdown renders.
+- Describe what the user sees and does, not how it's implemented. Implementation notes belong in this file.
+- A small tweak gets a word or a table row, or nothing at all. Don't add a sentence for every change.
+
 ## Key Gotchas
 
 ### Widget Order Is Saved Workflow Format
@@ -171,6 +191,19 @@ Frontend >= 1.46 brands `node.id` as a string (`"5"`); an unassigned node is `"-
 ### Subgraphs
 - UNIQUE_ID for nodes inside subgraphs is a path (`"54:62:73"`). `update_node_in_workflow` walks `workflow.nodes` -> `definitions.subgraphs[*].nodes` by that path
 - `app.graph` is the root graph; walk subgraphs with `walkGraph` (uses `node.subgraph`)
+- Copies / clones of a subgraph node get their own subgraph definition, so a container's inner nodes belong to it alone
+
+### Promoted Widgets Don't Run Our Callbacks
+Linking a widget input inside a subgraph to a subgraph input "promotes" it: the subgraph node (container) shows its own widget. On current frontends (checked against 1.57, `SubgraphNode._setWidget` / `promotedWidgetStoreProjection.ts`):
+- The outer widget keeps its **own value** in `widgetValueStore`, keyed by the container's id. The inner widget keeps a stale value the backend never sees -- the outer value is substituted at queue time
+- Its options are a `cloneDeep` **snapshot taken at promotion**. Later changes to the inner options (new saves, list switches) never reach it
+- Its `callback` only writes the store. The inner widget's callback never runs, so the Saver's load-prompt / refilter logic didn't either (the subgraph bug report; fixture `tests/fixtures/saver_subgraph_promotion.json`)
+- Both renderers call the outer widget's `callback` on a user change (classic: `BaseWidget.setValue`; Vue: `processedWidgetRenderModel` update handler). Only the classic canvas also calls the container's `onWidgetChanged`, so don't hook that
+- The outer widget object is rebuilt on every (re)promotion, followed by `subgraph.events` `widget-promoted`. It is **also rebuilt lazily with no event**: the container's `widgets` getter projects a fresh object into `input._widget` whenever that is empty (store id migration, `promotionUtils` re-registration). Seen on 1.57.6 after a page refresh. So `subgraph_widgets.js` also watches each input's `_widget` slot with an accessor (`trapInputWidget`) and binds new objects in a microtask
+- Assigning `.value` / `.options` on the outer widget writes the store (no callback). Assign a new options object; don't mutate `.options.values` in place
+- A Primitive can feed the container's input. It writes the outer widget and calls its `callback` (`applyFirstWidgetValueToGraph`), on change **and again on every queue**. So such inputs are bound (only inputs fed from an enclosing subgraph's input are skipped), `resolveWidgetSource` treats the container widget as the source, the Saver pushes values/options on to that Primitive (`syncValueToConnectedPrimitive` / `refreshConnectedPrimitives` on the container), and `onPromotedWidgetChanged` ignores unchanged values so the per-queue re-apply doesn't reset the selection
+
+The Saver keeps its inner widgets as a mirror of the outer ones: `onPromotedWidgetChanged` copies the value in and runs the normal callback; `_syncComboInput` pushes option lists out (`_pushPromotedOptions`) and `_syncPromotedValues` pushes value changes out (resets to `"None"`, loaded prompt, Save / Delete, captured text). Server calls read the list name through `_sourceValue` (outer widget when promoted). The backend is unchanged -- it still outputs `prompt_text`.
 
 ### Pause-to-Edit Blocks Execution
 The paused node sleeps in ComfyUI's executor thread -- the whole queue waits. If the browser tab is closed while paused, the only ways out are the Continue button after reopening (re-sent every 2s) or Manager's "(Clear All Paused)". ComfyUI's Interrupt does **not** break the loop (it doesn't check `comfy.model_management.processing_interrupted()`). Changing pause state must not change `IS_CHANGED` (it's deliberately excluded from the hash).
@@ -207,7 +240,20 @@ Most JS uses `api.fetchApi('/...')` (respects ComfyUI's API base path). Manager'
 
 ## Testing
 
-There is no automated test suite. Verify manually in ComfyUI. **Run each UI check twice, once with Nodes 2.0 off and once with it on** (toggle in ComfyUI settings). Also switch renderers with the workflow open, and confirm dropdowns, buttons and the Continue button still work without reloading. Check the browser console for errors in both modes. Checks:
+### Automated
+
+Plain Node scripts, no install (details in `tests/README.md`):
+
+```sh
+node tests/subgraph_widgets.test.mjs
+```
+
+- Logic worth testing goes in a pure module (no `app` / `api` / DOM imports) like `js/subgraph_widgets.js`; the extension file keeps only the frontend glue
+- Mock graphs come from `tests/workflowLoader.mjs`; real workflows that reproduce a bug go in `tests/fixtures/` with descriptive names (and descriptive node titles, which tests look up)
+
+### Manual
+
+Frontend behaviour can't be covered by the mocks. Verify in ComfyUI. **Run each UI check twice, once with Nodes 2.0 off and once with it on** (toggle in ComfyUI settings). Also switch renderers with the workflow open, and confirm dropdowns, buttons and the Continue button still work without reloading. Check the browser console for errors in both modes. Checks:
 - Saving / loading / deleting prompts, switching lists, Manager add / delete / sort, import / export
 - `use_input_text` on and off (and on with nothing connected -> clear error)
 - Every Nth Queue driving `use_input_text`: off runs keep the LLM and sampler cached; batch count > 1 advances once per item
@@ -216,6 +262,7 @@ There is no automated test suite. Verify manually in ComfyUI. **Run each UI chec
 - Save / Delete / Sort buttons respond to clicks and grey out correctly (`MULTI_BUTTON` disabled state)
 - Saving a prompt shows it in every Saver's dropdown right away, with no stale options or red outline in Vue
 - A Primitive connected to `load_saved` / `prompt_lists`, including after the "R" refresh and after reloading the workflow
+- Saver inside a subgraph with `load_saved` / `prompt_lists` promoted (load `tests/fixtures/saver_subgraph_promotion.json`): picking a prompt outside loads it inside; switching the list outside refilters the outer prompt dropdown; typing in the prompt resets the outer selection to `None`; Save / Delete update the outer dropdown; options are live after reloading the workflow and after "R"; also nested two subgraphs deep; also with Primitives on the outside feeding the subgraph node's `load_saved` / `prompt_lists` (one or both), across several queued runs
 - Reloading an old saved workflow / image metadata
 
 `ruff` is used for linting (`.ruff_cache/` exists; no config, so defaults).

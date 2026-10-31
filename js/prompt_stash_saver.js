@@ -10,6 +10,7 @@ import {
     walkGraph,
 } from "./utils.js";
 import { handlePushedUpdate, installStashSync } from "./stash_sync.js";
+import { installPromotedWidgetHooks, isContainer, resolveWidgetSource } from "./subgraph_widgets.js";
 
 // ── Cache-Invalidation Workaround ────────────────────────────────────────
 //
@@ -167,11 +168,99 @@ app.registerExtension({
                     });
                 };
 
-                // Expose the combos' live options to connected Primitive nodes,
-                // and notify them whenever the option lists change.
+                // ── Promoted Subgraph Widgets ──────────────────────────────
+                //
+                // When one of our widget inputs is linked to a subgraph input,
+                // the subgraph node shows its own copy of the widget. Its value
+                // is what gets queued, its options are a snapshot taken at
+                // promotion, and changing it never runs our callbacks (see
+                // subgraph_widgets.js). We keep the inner widget as a mirror of
+                // the outer one: outer changes are forwarded in and run our
+                // normal callbacks; our own changes (values and option lists)
+                // are pushed back out.
+                const ownWidgets = [useInputWidget, promptWidget, saveKeyWidget, loadSavedWidget, promptListsWidget].filter(Boolean);
+                const widgetByName = (name) => ownWidgets.find((w) => w.name === name);
+
+                // The subgraph node + outer widget supplying this widget's value,
+                // or null when the widget isn't promoted.
+                this._promotedSourceInfo = (widget) => {
+                    const graph = this.graph;
+                    if (!widget || !graph?.rootGraph || graph.rootGraph === graph) return null;
+                    const source = resolveWidgetSource(this, widget.name);
+                    return source && source.node !== this && source.widget !== widget ? source : null;
+                };
+                this._promotedSource = (widget) => this._promotedSourceInfo(widget)?.widget ?? null;
+
+                // The value that will actually be queued for one of our widgets.
+                this._sourceValue = (widget) => (this._promotedSource(widget) ?? widget)?.value;
+
+                // Copy an inner value / option list out to the outer widget, and
+                // on to a Primitive feeding the subgraph node's input. Writing
+                // `.value` / `.options` on the outer widget only updates its
+                // stored state; its callback isn't run, so there's no loop. The
+                // Primitive gets its value first, so the option refresh doesn't
+                // find it out of range and reset it.
+                this._pushPromotedValue = (widget) => {
+                    const info = this._promotedSourceInfo(widget);
+                    if (!info) return;
+                    if (info.widget.value !== widget.value) info.widget.value = widget.value;
+                    syncValueToConnectedPrimitive(info.node, info.widget.name);
+                };
+                this._pushPromotedOptions = (widget) => {
+                    const info = this._promotedSourceInfo(widget);
+                    const values = widget?.options?.values;
+                    if (!info || !Array.isArray(values)) return;
+                    info.widget.options = { ...(info.widget.options ?? {}), values: values.slice() };
+                    if (info.widget.value !== widget.value) info.widget.value = widget.value;
+                    syncValueToConnectedPrimitive(info.node, info.widget.name);
+                    refreshConnectedPrimitives(info.node, info.widget.name);
+                };
+                this._syncPromotedValues = () => {
+                    for (const widget of ownWidgets) this._pushPromotedValue(widget);
+                };
+
+                // Outer widget (re)created: push our value and live option lists
+                // out to it. The inner state wins: it is always self-consistent
+                // (selection matches the loaded prompt), while the outer value can
+                // be stale -- the frontend's widget store keeps an existing
+                // entry's value when a new subgraph node reuses an old node's id
+                // (widgetValueStore.registerWidget, keyed graphId:nodeId:name).
+                this.onPromotedWidgetBound = (name) => {
+                    const widget = widgetByName(name);
+                    if (!widget) return;
+                    if (widget === promptListsWidget || widget === loadSavedWidget) {
+                        if (this.data?.lists) {
+                            this._repopulateCombos?.();
+                        } else {
+                            this._pushPromotedOptions(widget);
+                        }
+                    }
+                    this._pushPromotedValue(widget);
+                };
+
+                // User changed the outer widget: mirror it and run the same
+                // callback as a change on the node itself (loads the prompt,
+                // refilters the list, clears a stale selection...). An unchanged
+                // value is ignored: a Primitive feeding the subgraph node
+                // re-applies its value (and calls the callback) on every queue,
+                // which would otherwise reset the loaded prompt each run.
+                this.onPromotedWidgetChanged = (name, value) => {
+                    const widget = widgetByName(name);
+                    if (!widget || widget.value === value) return;
+                    widget.value = value;
+                    this.serialize_widgets = true;
+                    widget.callback?.(value);
+                    this._refreshSaveDeleteRow?.();
+                    app.graph.setDirtyCanvas(true, true);
+                };
+
+                // Expose the combos' live options to connected Primitive nodes
+                // and promoted outer widgets, and notify them whenever the
+                // option lists change.
                 this._syncComboInput = (widgetName) => {
                     this._installComboInput(widgetName);
                     refreshConnectedPrimitives(this, widgetName);
+                    this._pushPromotedOptions(widgetByName(widgetName));
                 };
 
                 // Rebuild both combos' options from the surviving `this.data`
@@ -236,6 +325,8 @@ app.registerExtension({
                             app.graph.setDirtyCanvas(true, true);
                         }
                     }
+                    // Reflect the reset (and the text) onto promoted outer widgets.
+                    this._syncPromotedValues?.();
                     // Refresh Save/Delete row whenever the prompt text changes
                     this._refreshSaveDeleteRow?.();
                 };
@@ -253,6 +344,8 @@ app.registerExtension({
                             app.graph.setDirtyCanvas(true, true);
                         }
                     }
+                    // Reflect the trimmed key and any reset onto promoted outer widgets.
+                    this._syncPromotedValues?.();
                     // Refresh Save/Delete row whenever the save key changes
                     this._refreshSaveDeleteRow?.();
                 };
@@ -271,7 +364,7 @@ app.registerExtension({
                                         if (!canSave()) return;
                                         const promptToSave = promptWidget.value;
                                         const keyToSave = saveKeyWidget.value.trim();
-                                        const selectedList = promptListsWidget.value;
+                                        const selectedList = this._sourceValue(promptListsWidget);
 
                                         api.fetchApi('/prompt_stash_saver/save', {
                                             method: 'POST',
@@ -308,7 +401,7 @@ app.registerExtension({
                                         if (!canDelete()) return;
 
                                         const deletedItemValue = loadSavedWidget.value;
-                                        const selectedList = promptListsWidget.value;
+                                        const selectedList = this._sourceValue(promptListsWidget);
 
                                         // Get current list and find index of deleted item
                                         const currentList = loadSavedWidget.options.values;
@@ -366,6 +459,7 @@ app.registerExtension({
                                             // item) isn't in the new options.
                                             syncValueToConnectedPrimitive(this, "load_saved");
                                             this._syncComboInput?.("load_saved");
+                                            this._syncPromotedValues?.();
 
                                             this.serialize_widgets = true;
                                             app.graph.setDirtyCanvas(true, true);
@@ -403,6 +497,7 @@ app.registerExtension({
                         saveKeyWidget.value = "";
                         this.isLoadingPrompt = false;
                         this.serialize_widgets = true;
+                        this._syncPromotedValues?.();
                         app.graph.setDirtyCanvas(true, true);
                         // After clearing, also refresh Save/Delete states
                         this._refreshSaveDeleteRow?.();
@@ -413,7 +508,7 @@ app.registerExtension({
                         method: 'POST',
                         body: JSON.stringify({
                             title: value,
-                            list_name: promptListsWidget.value,
+                            list_name: this._sourceValue(promptListsWidget),
                             node_id: this.id
                         })
                     }).then(response => response.json())
@@ -424,6 +519,7 @@ app.registerExtension({
                                 saveKeyWidget.value = value;
                                 this.isLoadingPrompt = false;
                                 this.serialize_widgets = true;
+                                this._syncPromotedValues?.();
                                 app.graph.setDirtyCanvas(true, true);
                                 // After loading, refresh Save/Delete states (Save is now valid)
                                 this._refreshSaveDeleteRow?.();
@@ -475,6 +571,7 @@ app.registerExtension({
                     promptWidget.value = text;
                     saveKeyWidget.value = "";
                     this.serialize_widgets = true;
+                    this._syncPromotedValues?.();
                     app.graph.setDirtyCanvas(true, true);
                     // Update Save/Delete row after external prompt injection
                     this._refreshSaveDeleteRow?.();
@@ -523,6 +620,29 @@ app.registerExtension({
                 };
             };
         }
+    },
+
+    /**
+     * Hook every subgraph node so changes to its promoted widgets reach Prompt
+     * Stash Savers inside it (see subgraph_widgets.js). Runs for containers on
+     * creation, load and paste; the hook re-wraps whenever the frontend
+     * rebuilds a promoted widget.
+     *
+     * @param {LGraphNode} node - The created node.
+     */
+    nodeCreated(node) {
+        if (isContainer(node)) installPromotedWidgetHooks(node);
+    },
+
+    /**
+     * After a workflow loads, (re)bind every container. Containers are created
+     * before some of the nodes inside them finish configuring, so this pass
+     * catches Savers that weren't ready when the container was created.
+     */
+    afterConfigureGraph() {
+        walkGraph(app.graph, (node) => {
+            if (isContainer(node)) installPromotedWidgetHooks(node);
+        });
     },
 
     /**
